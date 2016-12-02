@@ -52,21 +52,6 @@ REQUEST_PUZZLE_INT_MASK = 0x800
 
 .text
 main:
-#BENNETT
-fkldjf
-dfsdafd
 	# go wild
 	# the world is your oyster :)
 	j	main
-
-#daniel
-danSfunction:
-paofjepaojfpjf
-qefjqpofj
-qefjopeqjfpqjf
-qejfo
-qejfoqe
-fjqefjqeof
-qefqeofj
-qejfqe
-
