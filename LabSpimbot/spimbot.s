@@ -55,3 +55,15 @@ main:
 	# go wild
 	# the world is your oyster :)
 	j	main
+
+#daniel
+danSfunction:
+paofjepaojfpjf
+qefjqpofj
+qefjopeqjfpqjf
+qejfo
+qejfoqe
+fjqefjqeof
+qefqeofj
+qejfqe
+
