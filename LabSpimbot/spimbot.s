@@ -220,7 +220,7 @@ move_to:
 	add		$t1, $t1, $t2
 	sw		$t1, TIMER		#request timer interrupt at cycle = $t1
 
-ret:
+move_to_done:
 	#restore all saved registers
 	lw		$ra, 0($sp)
 	lw		$s0, 4($sp)		#destx
