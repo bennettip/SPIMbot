@@ -89,16 +89,15 @@ main:
 	move	$s5, $a0 #may not need this statement
 	move	$s6, $a1 #may not need this statement
 
-main_after_init:
-
 	li	$t0, 0	# 0 for water, 1 for seeds, 2 for fire starters [to change next time]
 	sw	$t0, SET_RESOURCE_TYPE
+
+main_after_init:
 
 	#note only one thing
 	beq	$s3, 0, request_1		#if i have not requested anything, request puzzle_1
 
 	beq	$s4, 1, request_2_before_solving_1		#if i have puzzle 1, solve it
-	beq	$s4, 3, solve_puzzle_1				#if i have puzzle 1 and 2, solve puzzle 1
 	beq	$s4, 2, request_1_before_solving_2		#if i have puzzle 2, solve it
 
 	j	main_after_init			#loop if i already requested for puzzles but I haven't received anything yet
@@ -113,20 +112,28 @@ request_1_before_solving_2:
 	sw	$s1, REQUEST_PUZZLE		#request for puzzle 1
 	li	$s3, 1				#set flag to 'requested 1'
 
-	j	solve_puzzle_2
+	j	before_puzzle_2
 
 request_2_before_solving_1:
-	sw	$s2, REQUEST_PUZZLE		#request for puzzle 2
-	li	$s3, 2				#set flag to 'requested 2'
+	#sw	$s2, REQUEST_PUZZLE		#request for puzzle 2
+	#li	$s3, 2				#set flag to 'requested 2'
 
-	j	solve_puzzle_1
+	j	before_puzzle_1
+
+before_puzzle_1:
+	j	zero_solution_1
 
 solve_puzzle_1:
 	move	$a0, $s0			#solution address
 	move	$a1, $s1			#puzzle 1 address
+	li	$t0, 0
+	sw	$t0, 0($s0)			#size = 0
 	jal	recursive_backtracking
+	sw	$s0, SUBMIT_SOLUTION
 	beq	$s4, 3, set_3_to_2
 	li	$s4, 0
+	sw	$s1, REQUEST_PUZZLE		#request for puzzle 1
+	li	$s3, 1				#set flag to 'requested 1'	
 
 	j	main_after_init
 
@@ -134,11 +141,43 @@ set_3_to_2:
 	li	$s4, 2
 	j	main_after_init
 
+zero_solution_1:
+	li	$t0, 0
+	j	zero_solution_loop_1
+
+zero_solution_loop_1:
+	bge	$t0, 82, solve_puzzle_1
+	mul	$t1, $t0, 4
+	add	$t1, $t1, $s0
+	li	$t2, 0
+	sw	$t2, 0($t1)
+	add	$t0, $t0, 1
+	j	zero_solution_loop_1
+
+
+zero_solution_2:
+	li	$t0, 0
+	j	zero_solution_loop_2
+
+zero_solution_loop_2:
+	bge	$t0, 82, solve_puzzle_2
+	mul	$t1, $t0, 4
+	add	$t1, $t1, $s0
+	li	$t2, 0
+	sw	$t2, 0($t1)
+	add	$t0, $t0, 1
+	j	zero_solution_loop_2
+
+before_puzzle_2:
+	j	zero_solution_2
+
 solve_puzzle_2:
 	move	$a0, $s0			#solution address
 	move	$a1, $s2			#puzzle 2 address
 	jal	recursive_backtracking
 	beq	$s4, 3, set_3_to_1
+	sw	$s0, SUBMIT_SOLUTION
+	li	$s4, 0
 	j	main_after_init
 
 set_3_to_1:
@@ -251,6 +290,7 @@ is_single_value_domain:
 isvd_zero:	   
     li	   $v0, 0
     jr	   $ra
+
     
 .globl get_domain_for_addition
 get_domain_for_addition:
@@ -275,6 +315,11 @@ get_domain_for_addition:
     sub    $t0, $s1, 1                  # num_cell - 1
     mul    $t0, $t0, $v0                # (num_cell - 1) * lower_bound
     sub    $t0, $s0, $t0                # t0 = high_bits
+    bge    $t0, 0, gdfa_skip0
+
+    li     $t0, 0
+
+gdfa_skip0:
     bge    $t0, $s3, gdfa_skip1
 
     li     $t1, 1          
@@ -301,6 +346,7 @@ gdfa_skip2:
     lw     $s3, 16($sp)
     add    $sp, $sp, 20
     jr     $ra
+
 
 .globl get_domain_for_subtraction
 get_domain_for_subtraction:
