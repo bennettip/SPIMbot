@@ -54,6 +54,8 @@ REQUEST_PUZZLE_INT_MASK = 0x800
 puzzle_1_data: .space 4096
 puzzle_2_data: .space 4096
 solution_data: .space 328
+requested_flag: .space 4
+received_flag: .space 4
 
 .text
 main:
@@ -82,9 +84,12 @@ main:
 	la	$s0, solution_data	#address for solution
 	la	$s1, puzzle_1_data	#address for puzzle 1
 	la	$s2, puzzle_2_data	#address for puzzle 2
+	la	$s3, requested_flag
+	la	$s4, received_flag
 
-	li	$s3, 0	#flag. 0 = nothing requested; 1 = 1 requested; 2 = 2 requested
-	li	$s4, 0	#flag. 0 = nothing received; 1 = 1 received only; 2 = 2 received only; 3 = both received
+	li	$t0, 0
+	sw	$t0, 0($s3)	#flag. 0 = nothing requested; 1 = 1 requested; 2 = 2 requested
+	sw	$t0, 0($s4)	#flag. 0 = nothing received; 1 = 1 received only; 2 = 2 received only; 3 = both received
 
 	move	$s5, $a0 #may not need this statement
 	move	$s6, $a1 #may not need this statement
@@ -95,28 +100,33 @@ main:
 main_after_init:
 
 	#note only one thing
-	beq	$s3, 0, request_1		#if i have not requested anything, request puzzle_1
+	lw	$t3, 0($s3)
+	lw	$t4, 0($s4)
+	beq	$t3, 0, request_1		#if i have not requested anything, request puzzle_1
 
-	beq	$s4, 1, request_2_before_solving_1		#if i have puzzle 1, solve it
-	beq	$s4, 2, request_1_before_solving_2		#if i have puzzle 2, solve it
+	beq	$t4, 1, request_2_before_solving_1		#if i have puzzle 1, solve it
+	beq	$t4, 2, request_1_before_solving_2		#if i have puzzle 2, solve it
 
 	j	main_after_init			#loop if i already requested for puzzles but I haven't received anything yet
 
 request_1:
 	sw	$s1, REQUEST_PUZZLE		#request for puzzle 1
-	li	$s3, 1				#set flag to 'requested 1'
+	li	$t0, 1
+	sw	$t0, 0($s3)			#set flag to 'requested 1'
 
 	j	main_after_init
 
 request_1_before_solving_2:
 	sw	$s1, REQUEST_PUZZLE		#request for puzzle 1
-	li	$s3, 1				#set flag to 'requested 1'
+	li	$t0, 1
+	sw	$t0, 0($s3)			#set flag to 'requested 1'
 
 	j	before_puzzle_2
 
 request_2_before_solving_1:
-	#sw	$s2, REQUEST_PUZZLE		#request for puzzle 2
-	#li	$s3, 2				#set flag to 'requested 2'
+	sw	$s2, REQUEST_PUZZLE		#request for puzzle 2
+	li	$t0, 2
+	sw	$t0, 0($s3)			#set flag to 'requested 2'
 
 	j	before_puzzle_1
 
@@ -126,19 +136,19 @@ before_puzzle_1:
 solve_puzzle_1:
 	move	$a0, $s0			#solution address
 	move	$a1, $s1			#puzzle 1 address
-	li	$t0, 0
-	sw	$t0, 0($s0)			#size = 0
 	jal	recursive_backtracking
 	sw	$s0, SUBMIT_SOLUTION
-	beq	$s4, 3, set_3_to_2
-	li	$s4, 0
-	sw	$s1, REQUEST_PUZZLE		#request for puzzle 1
-	li	$s3, 1				#set flag to 'requested 1'	
+
+	lw	$t4, 0($s4)
+	beq	$t4, 3, set_3_to_2
+	li	$t4, 0
+	sw	$t4, 0($s4)
 
 	j	main_after_init
 
 set_3_to_2:
-	li	$s4, 2
+	li	$t4, 2
+	sw	$t4, 0($s4)
 	j	main_after_init
 
 zero_solution_1:
@@ -155,6 +165,9 @@ zero_solution_loop_1:
 	j	zero_solution_loop_1
 
 
+before_puzzle_2:
+	j	zero_solution_2
+
 zero_solution_2:
 	li	$t0, 0
 	j	zero_solution_loop_2
@@ -168,20 +181,21 @@ zero_solution_loop_2:
 	add	$t0, $t0, 1
 	j	zero_solution_loop_2
 
-before_puzzle_2:
-	j	zero_solution_2
-
 solve_puzzle_2:
 	move	$a0, $s0			#solution address
 	move	$a1, $s2			#puzzle 2 address
 	jal	recursive_backtracking
-	beq	$s4, 3, set_3_to_1
 	sw	$s0, SUBMIT_SOLUTION
-	li	$s4, 0
+
+	lw	$t4, 0($s4)
+	beq	$t4, 3, set_3_to_1
+	li	$t4, 0
+	sw	$t4, 0($s4)
 	j	main_after_init
 
 set_3_to_1:
-	li	$s4, 1
+	li	$t4, 1
+	sw	$t4, 0($s4)
 	j	main_after_init	
 
 
@@ -231,19 +245,28 @@ non_intrpt:				# was some non-interrupt
 puzzle_interrupt:
 	sw	$a0, REQUEST_PUZZLE_ACK	# acknowledge interrupt
 
-	beq	$s3, 1, set_received_1	#if i requested puzzle 1
-	beq	$s4, 1, set_to_3	#otherwise i have puzzle 2. if i already have puzzle 1
-	li	$s4, 2			#otherwise, i only have puzzle 2
+	la	$k0, requested_flag
+	lw	$k0, 0($k0)		#value of requested_flag
+	beq	$k0, 1, set_received_1	#if i requested puzzle 1
+	la	$k0, received_flag
+	lw	$v0, 0($k0)		#value of received_flag
+	beq	$k0, 1, set_to_3	#otherwise i have puzzle 2. if i already have puzzle 1
+	li	$v0, 2			#otherwise, i only have puzzle 2
+	sw	$v0, 0($k0)
 
 	j	interrupt_dispatch
 
 set_received_1:
-	beq	$s4, 2, set_to_3	#if i already have puzzle 2 and received puzzle 1
-	li	$s4, 1			#otherwise, i received puzzle 1 only
+	la	$k0, received_flag
+	lw	$v0, 0($k0)		#value of received_flag
+	beq	$v0, 2, set_to_3	#if i already have puzzle 2 and received puzzle 1
+	li	$v0, 1			#otherwise, i received puzzle 1 only
+	sw	$v0, 0($k0)
 	j	interrupt_dispatch
 
 set_to_3:
-	li	$s4, 3			#set that both puzzle 1 and 2 were received
+	li	$v0, 3			#set that both puzzle 1 and 2 were received
+	sw	$v0, 0($k0)
 	j	interrupt_dispatch
 
 done:
