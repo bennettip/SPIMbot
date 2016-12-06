@@ -1386,7 +1386,7 @@ first_harvest:
 	li	$a1, 0
 	sw	$a1, 0($a0)
 	sw	$a1, 4($a0)		#start and end = 0
-	lw	$a1, MAX_GROWTH_TILE
+	lw	$v0, MAX_GROWTH_TILE
 	sw	$v0, 8($a0)
 
 	j	interrupt_dispatch	# see if other interrupts are waiting
@@ -1411,4 +1411,5 @@ done:
 	move	$at, $k1    # Restore $at
 	.set at
 	eret
+
 
