@@ -67,7 +67,7 @@ timer_cause:				.space 4	#0-nothing,
 
 #TODO: Still need data structures for tile array, puzzles
 #for tile array
-.align 2
+.align 4
 tile_data: .space 1600
 
 .text
@@ -75,7 +75,7 @@ main: #This part used to initialize values
 	#initialize interrupt flags
 #li		fire_flag, 0
 #	li		max_growth_flag, 0
-#	li		currently_moving_flag, 0
+	sw		$zero, currently_moving_flag
 
 	#Enable all interrupts
 	li		$t4, BONK_MASK
@@ -101,6 +101,19 @@ main: #This part used to initialize values
 	lw		$t0, GET_NUM_FIRE_STARTERS
 main_loop:
 	lw		$s0, timer_cause
+
+#li		$t0, 0
+#	move	$a0, $t0
+#	jal		move_to
+#test_loop:
+#	lw		$s1, currently_moving_flag
+#	bne		$zero, $s1, no_move
+#	li		$t0, 99
+#	move	$a0, $t0
+#	jal		move_to
+
+#no_move:
+#	j		test_loop
 
 
 	bne		$zero, $s0, cont
@@ -264,7 +277,14 @@ done_checking_neighbor_tiles:
 planted:
 	#update next_seed_location
 	lw		$t0, next_seed_location
+	li		$t8, 99
+	bne		$t0, $t8, currently_not_at_last_tile
+	#if we are at tile 99...it wants to go to 0, BUT WE CANT >:0 so set it to 2, so the checkerboard pattern remains
+	li		$t8, 2
+	sw		$t8, next_seed_location
+	j		planting_and_watering_done
 
+currently_not_at_last_tile:
 	li		$t5, 10
 	div		$t0, $t5
 	mflo	$t6			#curr next_seed_location/10
