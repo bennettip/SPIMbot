@@ -220,10 +220,10 @@ plant_and_water:
 	beq		$t2, $zero, check_side_tiles
 	#if this tile if full, check to see if we can set fire to this tile if it's our enemy's crops
 	lw		$t2, 4($t1)			#0 - ours, 1 - enemy
-	beq		$t2, $zero, planting_and_watering_done
+	beq		$t2, $zero, water_curr_tile	# <-- water this tile AND update next_seed_location!!
 	#if this tile is our enemy's
 	sw		$zero, BURN_TILE
-	j		planting_and_watering_done
+	j		update_next_seed_location # <-- set fire to this tile AND update next_seed_location!!
 
 check_side_tiles:
 	#check 4 sides to see if anything growing
@@ -265,16 +265,17 @@ check_left_tile:	#get left tile
 done_checking_neighbor_tiles:
 	#WE'RE CLEAR TO PLANT AND WATER at current location!
 	sw		$zero, SEED_TILE		#attempt to plant seed here
+water_curr_tile:
 	lw		$t0, GET_NUM_WATER_DROPS
 
-	ble		$t0, $zero, planted
+	ble		$t0, $zero, update_next_seed_location
 	#if we can water...
 	li		$t1, 2				#water here
 	sw		$t1, WATER_TILE
 
 
 
-planted:
+update_next_seed_location:
 	#update next_seed_location
 	lw		$t0, next_seed_location
 	li		$t8, 99
