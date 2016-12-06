@@ -1300,32 +1300,18 @@ interrupt_dispatch:                             # Interrupt:
 
 on_fire_interrupt:
     sw  $0, ON_FIRE_ACK     # acknowledge interrupt
-	sw	$a0, ON_FIRE_ACK	# acknowledge interrupt
+    # get location
+    lw  $k0, GET_FIRE_LOC
 
-	la	$a0, fire_locations
-	lw	$a1, 0($a0)
-	beq	$a1, -1, first_fire	# first fire
-	lw	$a1, 4($a0)		#end
-	add	$a1, $a1, 1		#end++
-	sw	$a1, 4($a0)
-	add	$a0, $a0, 8		#location of 0th element
-	mul	$a1, $a1, 4		#additional location of ith element
-	add	$a0, $a0, $a1		#location of ith element
-	lw	$a1, GET_FIRE_LOC
-	sw	$a1, 0($a0)
+    srl $a0, $k0, 16
+    sw  $a0, fireX
+    sll $a0, $k0, 16
+    srl $a0, $a0, 16
+    sw  $a0, fireY
+    li  $k0, 1
+    sw  $k0, fire_flag      # fire_flag = 1
 
-	j	interrupt_dispatch
-
-
-first_fire:
-	la	$a0, fire_locations
-	li	$a1, 0
-	sw	$a1, 0($a0)
-	sw	$a1, 4($a0)		#start and end = 0
-	lw	$v0, GET_FIRE_LOC
-	sw	$v0, 8($a0)
-
-	j	interrupt_dispatch	# see if other interrupts are waiting
+    j	interrupt_dispatch  # see if other interrupts are waiting
 
 timer_interrupt:
 	sw	$a1, TIMER_ACK              #acknowledge timer interrupt
@@ -1347,35 +1333,10 @@ puzzle_interrupt:
 	sw	$k0, 0($a0)
 	j	interrupt_dispatch
 
-
-
 max_growth_interrupt:
-	sw	$a0, MAX_GROWTH_ACK	# acknowledge interrupt
-
-	la	$a0, harvest_locations
-	lw	$a1, 0($a0)
-	beq	$a1, -1, first_harvest	# first fire
-	lw	$a1, 4($a0)		#end
-	add	$a1, $a1, 1		#end++
-	sw	$a1, 4($a0)
-	add	$a0, $a0, 8		#location of 0th element
-	mul	$a1, $a1, 4		#additional location of ith element
-	add	$a0, $a0, $a1		#location of ith element
 	lw	$a1, MAX_GROWTH_TILE
-	sw	$a1, 0($a0)
-
+	sw	$a1, max_growth_location	#store location of crop
 	j	interrupt_dispatch
-
-
-first_harvest:
-	la	$a0, harvest_locations
-	li	$a1, 0
-	sw	$a1, 0($a0)
-	sw	$a1, 4($a0)		#start and end = 0
-	lw	$a1, MAX_GROWTH_TILE
-	sw	$v0, 8($a0)
-
-	j	interrupt_dispatch	# see if other interrupts are waiting
 
 # some_interrupt: # template
 #    sw  $0, SOME_ACK
@@ -1397,4 +1358,3 @@ done:
 	move	$at, $k1    # Restore $at
 	.set at
 	eret
-
