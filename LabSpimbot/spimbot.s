@@ -2,7 +2,7 @@
 WATER_PER_TILE =        30
 
 SEEDS_WEIGHT =          10
-FIRE_STARTERS_WEIGHT =  700
+FIRE_STARTERS_WEIGHT =  100
 
 MAX_WATER =             500
 MAX_SEEDS =             30
@@ -590,10 +590,10 @@ done_checking_neighbor_tiles:
 	sw		$zero, SEED_TILE		#attempt to plant seed here
 water_curr_tile:
 	lw		$t0, GET_NUM_WATER_DROPS
-
-	ble		$t0, $zero, update_next_seed_location
+    li      $t1, WATER_PER_TILE
+	blt		$t0, $t1, update_next_seed_location
 	#if we can water...
-	li		$t1, WATER_PER_TILE				#water here
+#li		$t1, WATER_PER_TILE				#water here
 	sw		$t1, WATER_TILE
 
 
