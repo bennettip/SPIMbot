@@ -76,7 +76,7 @@ main:
 	
 
 	# enable interrupt. TO COMBINE WITH BENNETT/DANIEL'S CODE
-	li	$t0, REQUEST_PUZZLE_INT_MASK	# timer interrupt enable bit
+	li	$t0, REQUEST_PUZZLE_INT_MASK	# puzzle interrupt enable bit
 	or	$t0, $t0, 1			# global interrupt enable
 	mtc0	$t0, $12			# set interrupt mask (Status register)
 
@@ -96,6 +96,9 @@ main:
 
 	li	$t0, 0	# 0 for water, 1 for seeds, 2 for fire starters [to change next time]
 	sw	$t0, SET_RESOURCE_TYPE
+
+	li	$t0, 1
+	sw	$t0, VELOCITY
 
 main_after_init:
 
