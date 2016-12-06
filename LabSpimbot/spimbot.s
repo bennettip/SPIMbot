@@ -74,27 +74,19 @@ fireY:  .word 0
 # TODO: Still need data structures for tile array, puzzles
 # for tile array
 .align  4
-puzzle_1_data:  .space  4096
-puzzle_2_data:  .space  4096
-solution_data:  .space  328
-requested_flag: .space  4
-received_flag:  .space  4
+solution_data:      .space  328
+puzzle_queue:       .space  20480   # maximum 5
+queue_start:        .space  4
+queue_end:          .space  4
+requested_puzzles:  .space  4
+received_puzzles:   .space  4
+fire_locations:     .space  4008
+harvest_locations:  .space  4008
 
-tile_data:      .space 1600
+tile_data:          .space  1600
 
 .text
 main: # This part used to initialize values
-    #saves registers. DO I EVEN NEED TO DO THIS? WE NEVER EXIT THE FUNCTION
-    sub     $sp, $sp, 36
-    sw      $ra, 0($sp)
-    sw      $s0, 4($sp)
-    sw      $s1, 8($sp)
-    sw      $s2, 12($sp)
-    sw      $s3, 16($sp)
-    sw      $s4, 20($sp)
-    sw      $s5, 24($sp)        # $a0. may not need these
-    sw      $s6, 28($sp)        # $a1. may not need these.
-
 	# initialize interrupt flags
 	sw      $0, fire_flag
 	sw      $0, max_growth_flag
@@ -102,139 +94,295 @@ main: # This part used to initialize values
     sw		$zero, timer_cause
 
 	#Enable all interrupts
-	li		$t4, BONK_MASK
-	or		$t4, TIMER_MASK
+#	li		$t4, BONK_MASK
+	li		$t4, TIMER_MASK
 	or		$t4, ON_FIRE_MASK
 	or		$t4, MAX_GROWTH_INT_MASK
 	or		$t4, REQUEST_PUZZLE_INT_MASK
 	or		$t4, $t4, 1         # global interrupt enable
 	mtc0	$t4, $12            # set interrupt mask (Status register)
+#
+	la	$t3, requested_puzzles
+	la	$t4, received_puzzles
 
-    #initialization
-    la      $s0, solution_data	# address for solution
-    la      $s1, puzzle_1_data	# address for puzzle 1
-    la      $s2, puzzle_2_data	# address for puzzle 2
-    la      $s3, requested_flag
-    la      $s4, received_flag
+	li	$t0, 0
+	sw	$t0, 0($t3)	#flag. 0 = nothing requested; 1 = 1 requested; 2 = 2 requested
+	sw	$t0, 0($t4)	#flag. 0 = nothing received; 1 = 1 received only; 2 = 2 received only; 3 = both received
 
-    li      $t0, 0
-    sw      $t0, 0($s3)         # flag. 0 = nothing requested; 1 = 1 requested; 2 = 2 requested
-    sw      $t0, 0($s4)         # flag. 0 = nothing received; 1 = 1 received only; 2 = 2 received only; 3 = both received
+    la  $t0, fire_locations
+    li  $t1, -1
+    sw  $t1, 0($t0)
+    sw  $t1, 4($t0)
 
-    move	$s5, $a0            # may not need this statement
-    move	$s6, $a1            # may not need this statement
+    la  $t0, harvest_locations
+    li  $t1, -1
+    sw  $t1, 0($t0)
+    sw  $t1, 4($t0)
 
-    li      $t0, 0              # 0 for water, 1 for seeds, 2 for fire starters [to change next time]
-    sw      $t0, SET_RESOURCE_TYPE
-
-    li      $t0, 0
-    sw      $t0, VELOCITY
-
-main_after_init:
-
-	#note only one thing
-	li	$t0, 1
-	sw	$t0, VELOCITY
-	lw	$t3, 0($s3)
-	lw	$t4, 0($s4)
-	beq	$t3, 0, request_1		#if i have not requested anything, request puzzle_1
-
-	beq	$t4, 1, request_2_before_solving_1		#if i have puzzle 1, solve it
-	beq	$t4, 2, request_1_before_solving_2		#if i have puzzle 2, solve it
-
-
+	la	$t3, queue_start
+	la	$t4, queue_end
 	li	$t0, -1
-	sw	$t0, VELOCITY
+	sw	$t0, 0($t3)
+	sw	$t0, 0($t4)
 
-	j	main_after_init			#loop if i already requested for puzzles but I haven't received anything yet
+new_main:
+	la	$t0, timer_cause
+	lw	$t0, 0($t0)
+	beq	$t0, 0, check_for_fire		#not moving or doing anything, check for fire
+	beq	$t0, 1, reached_fire		#i can put out fire now
+	beq	$t0, 2, reached_harvest		#i can harvest now
+	j	solve_puzzle_start
 
-request_1:
-	sw	$s1, REQUEST_PUZZLE		#request for puzzle 1
-	li	$t0, 1
-	sw	$t0, 0($s3)			#set flag to 'requested 1'
+check_for_fire:
+	#check if enough water first. if not, j check_for_harvest
 
-	j	main_after_init
+	la	$t0, fire_locations
+	lw	$t1, 0($t0)			#value of start
+	beq	$t1, -1, check_for_harvest	#continue if no fire
 
-request_1_before_solving_2:
-	sw	$s1, REQUEST_PUZZLE		#request for puzzle 1
-	li	$t0, 1
-	sw	$t0, 0($s3)			#set flag to 'requested 1'
+	mul	$t2, $t1, 4		#start location * 4
+	add	$t0, $t0, 8		#first element (location 0)
+	add	$t0, $t0, $t2		#ith element
+	lw	$t1, 0($t0)		#location of fire
 
-	j	before_puzzle_2
+	srl	$a0, $t1, 16		#x
+	li	$a1, 65535		#0000000000000000 1111111111111111
+	and	$a1, $t1, $a1		#y
 
-request_2_before_solving_1:
-	sw	$s2, REQUEST_PUZZLE		#request for puzzle 2
-	li	$t0, 2
-	sw	$t0, 0($s3)			#set flag to 'requested 2'
+	jal	xy_index_to_tilenum
 
-	j	before_puzzle_1
+	move	$a0, $v0
+	jal	move_to
+	li	$t0, 5			#timer will be caused by fire
+	sw	$t0, timer_cause
+	j	solve_puzzle_start
 
-before_puzzle_1:
-	j	zero_solution_1
+reached_fire:
+	sw	$a0, PUT_OUT_FIRE
+	la	$t0, timer_cause
+	li	$t1, 0
+	sw	$t1, 0($t0)
 
-solve_puzzle_1:
-	move	$a0, $s0			#solution address
-	move	$a1, $s1			#puzzle 1 address
-	jal	recursive_backtracking
-	sw	$s0, SUBMIT_SOLUTION
+	la	$t0, fire_locations
+	lw	$t1, 0($t0)		#value of start
+	lw	$t2, 4($t0)		#value of end
+	
+	beq	$t1, $t2, no_more_fires
+	add	$t1, $t1, 1		#go to next
+	sw	$t1, 0($t0)
+	j	new_main_end
 
-	lw	$t4, 0($s4)
-	beq	$t4, 3, set_3_to_2
-	li	$t4, 0
-	sw	$t4, 0($s4)
+no_more_fires:
+	la	$t0, fire_locations
+	li	$t1, -1
+	sw	$t1, 0($t0)
+	sw	$t1, 4($t0)
 
-	j	main_after_init
+	j	new_main_end
 
-set_3_to_2:
-	li	$t4, 2
-	sw	$t4, 0($s4)
-	j	main_after_init
+check_for_harvest:
+	la	$t0, harvest_locations
+	lw	$t1, 0($t0)		#value of start
+	beq	$t1, -1, solve_puzzle_start	#loop if no harvest
 
-zero_solution_1:
+	mul	$t2, $t1, 4		#start location * 4
+	add	$t0, $t0, 8		#first element (location 0)
+	add	$t0, $t0, $t2		#ith element
+	lw	$t1, 0($t0)		#location of harvest
+
+	srl	$a0, $t1, 16		#x
+	li	$a1, 65535		#0000000000000000 1111111111111111
+	and	$a1, $t1, $a1		#y
+
+	jal	xy_index_to_tilenum
+
+	move	$a0, $v0
+	jal	move_to
+	li	$t0, 6			#timer will be caused by harvest
+	sw	$t0, timer_cause
+	j	solve_puzzle_start
+
+reached_harvest:
+	sw	$a0, HARVEST_TILE
+	la	$t0, timer_cause
+	li	$t1, 0
+	sw	$t1, 0($t0)
+
+	la	$t0, harvest_locations
+	lw	$t1, 0($t0)		#value of start
+	lw	$t2, 4($t0)		#value of end
+	
+	beq	$t1, $t2, no_more_harvest
+	add	$t1, $t1, 1		#go to next
+	sw	$t1, 0($t0)
+	j	new_main_end
+
+no_more_harvest:
+	la	$t0, harvest_locations
+	li	$t1, -1
+	sw	$t1, 0($t0)
+	sw	$t1, 4($t0)
+
+	j	new_main_end
+
+new_main_end:
+	j	new_main
+
+puzzle_request: #precondition, less than 5 puzzles requested
+
+	la	$t0, queue_end
+	lw	$t1, 0($t0)		#queue end index
+	add	$t1, $t1, 1
+	li	$t7, 5
+	div	$t1, $t7
+	mfhi	$t2		#queue_end % 5
+	sw	$t2, 0($t0)
+
+	la	$t0, puzzle_queue
+	mul	$t2, $t2, 4096		#start location * 4096
+	add	$t0, $t0, $t2		#ith element	
+	sw	$t0, REQUEST_PUZZLE	#request for puzzle 1
+
+	la	$t0, requested_puzzles
+	lw	$t3, 0($t0)
+	add	$t3, $t3, 1
+	sw	$t3, 0($t0)
+
+	sub	$t3, $t1, $t3
+	blt	$t3, -1, start_greater_than_end
+	add	$t3, $t3, 1	#queue start
+	la	$t0, queue_start
+	sw	$t3, 0($t0)
+
+	jr	$ra
+
+start_greater_than_end:
+	li	$t5, 5
+	add	$t3, $t5, $t3
+	add	$t3, $t3, 1
+	la	$t0, queue_start
+	sw	$t3, 0($t0)
+
+	jr	$ra
+
+solve_puzzle_start:
+	sub	$sp, $sp, 24
+	sw	$ra, 0($sp)	
+	sw	$s0, 4($sp)	
+	sw	$s1, 8($sp)	
+	sw	$a0, 12($sp)
+	sw	$a1, 16($sp)
+	sw	$v0, 20($sp)
+	
+	la	$s0, solution_data
+	la	$s1, puzzle_queue
+
+	la	$t3, received_puzzles
+	lw	$t4, 0($t3)	#received_puzzles
+	bgt	$t4, 0, solve_received_puzzle_before
+	la	$t3, requested_puzzles
+	lw	$t4, 0($t3)	#requested puzzles
+	bge	$t4, 5, solve_puzzle_end
+	jal	puzzle_request
+	j	solve_puzzle_end
+
+
+zero_solution:
 	li	$t0, 0
-	j	zero_solution_loop_1
+	j	zero_solution_loop
 
-zero_solution_loop_1:
-	bge	$t0, 82, solve_puzzle_1
+zero_solution_loop:
+	bge	$t0, 82, solve_received_puzzle
 	mul	$t1, $t0, 4
 	add	$t1, $t1, $s0
 	li	$t2, 0
 	sw	$t2, 0($t1)
 	add	$t0, $t0, 1
-	j	zero_solution_loop_1
+	j	zero_solution_loop
 
-before_puzzle_2:
-	j	zero_solution_2
+solve_received_puzzle_before:
+	j	zero_solution
 
-zero_solution_2:
-	li	$t0, 0
-	j	zero_solution_loop_2
+solve_received_puzzle:
+    j   set_resource
 
-zero_solution_loop_2:
-	bge	$t0, 82, solve_puzzle_2
-	mul	$t1, $t0, 4
-	add	$t1, $t1, $s0
-	li	$t2, 0
-	sw	$t2, 0($t1)
-	add	$t0, $t0, 1
-	j	zero_solution_loop_2
+set_resource:
+    lw  $t0, GET_NUM_WATER_DROPS
+    lw  $t1, GET_NUM_SEEDS
+    mul $t1, $t1, 10
+    lw  $t2, GET_NUM_FIRE_STARTERS
+    mul $t2, $t2, 100
 
-solve_puzzle_2:
+    ble $t1, $t0, seeds_le_water
+    bgt $t0, $t2, least_fire_starters   # water < seeds. if (water <= fire_starters)
+    li  $t3, 0                          # least water
+    j   done_set_resource
+
+seeds_le_water:
+    ble $t1, $t2, least_seeds
+least_fire_starters:
+    li  $t3, 2  # least fire starters
+    j   done_set_resource
+
+least_seeds:
+    li  $t3, 1
+    j   done_set_resource
+
+done_set_resource:
+    sw  $t3, SET_RESOURCE_TYPE
+    j   solve_received_puzzle_cont
+
+solve_received_puzzle_cont:
+	la	$t0, queue_start
+	lw	$t1, 0($t0)
+	mul	$t3, $t1, 4096			#start location*4096
+	add	$t2, $s1, $t3			#location of puzzle
+
 	move	$a0, $s0			#solution address
-	move	$a1, $s2			#puzzle 2 address
-	jal	recursive_backtracking
-	sw	$s0, SUBMIT_SOLUTION
+	move	$a1, $t2			#puzzle address
+	jal     recursive_backtracking
+	sw      $s0, SUBMIT_SOLUTION
 
-	lw	$t4, 0($s4)
-	beq	$t4, 3, set_3_to_1
-	li	$t4, 0
-	sw	$t4, 0($s4)
-	j	main_after_init
+	la	$t4, received_puzzles
+	lw	$t5, 0($t4)
+	sub	$t5, $t5, 1
+	sw	$t5, 0($t4)
 
-set_3_to_1:
-	li	$t4, 1
-	sw	$t4, 0($s4)
-	j	main_after_init
+	la	$t4, requested_puzzles
+	lw	$t5, 0($t4)
+	sub	$t5, $t5, 1
+	sw	$t5, 0($t4)
+	beq	$t5, 0, reset_queue
+
+	la	$t0, queue_start
+	lw	$t1, 0($t0)
+	add	$t1, $t1, 1			#increase queue start
+	li	$t7, 5
+	div	$t1, $t7
+	mfhi	$t2	#new index of queue_start
+	sw	$t2, 0($t0)
+	jal	puzzle_request
+
+	j	solve_puzzle_end
+
+reset_queue:
+	la	$t0, queue_start
+	la	$t1, queue_start
+	li	$t2, -1
+	sw	$t2, 0($t0)
+	sw	$t2, 0($t1)
+	jal	puzzle_request
+	j	solve_puzzle_end
+
+solve_puzzle_end:
+	lw	$ra, 0($sp)	
+	lw	$s0, 4($sp)	
+	lw	$s1, 8($sp)	
+	lw	$a0, 12($sp)
+	lw	$a1, 16($sp)
+	lw	$v0, 20($sp)
+	add	$sp, $sp, 24
+	j	new_main
 
 #HELPER FUNCTIONS---------------------------------------------------------------
 
@@ -1178,30 +1326,12 @@ timer_interrupt:
 	j	interrupt_dispatch
 
 puzzle_interrupt:
-    sw	$a0, REQUEST_PUZZLE_ACK	# acknowledge interrupt
-
-    la	$k0, requested_flag
-    lw	$k0, 0($k0)             # value of requested_flag
-    beq	$k0, 1, set_received_1  # if i requested puzzle 1
-    la	$k0, received_flag
-    lw	$v0, 0($k0)             # value of received_flag
-    beq	$v0, 1, set_to_3        # otherwise i have puzzle 2. if i already have puzzle 1
-    li	$v0, 2                  # otherwise, i only have puzzle 2
-    sw	$v0, 0($k0)
-    j   interrupt_dispatch
-
-set_received_1:
-    la	$k0, received_flag
-    lw	$v0, 0($k0)         # value of received_flag
-    beq	$v0, 2, set_to_3    # if i already have puzzle 2 and received puzzle 1
-    li	$v0, 1              # otherwise, i received puzzle 1 only
-    sw	$v0, 0($k0)
-    j	interrupt_dispatch
-
-set_to_3:
-    li	$v0, 3  # set that both puzzle 1 and 2 were received
-    sw	$v0, 0($k0)
-    j	interrupt_dispatch
+	sw	$a0, REQUEST_PUZZLE_ACK
+	la	$a0, received_puzzles
+	lw	$k0, 0($a0)
+	add	$k0, $k0, 1
+	sw	$k0, 0($a0)
+	j	interrupt_dispatch
 
 max_growth_interrupt:
 	lw	$a1, MAX_GROWTH_TILE

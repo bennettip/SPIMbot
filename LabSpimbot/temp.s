@@ -93,29 +93,3 @@ do_puzzle:
 j	main
 #End of main
 #=============
-
-#BEN==========
-set_resource:
-    lw  $t0, GET_NUM_WATER_DROPS
-    lw  $t1, GET_NUM_SEEDS
-    mul $t1, $t1, 10
-    lw  $t2, GET_NUM_FIRE_STARTERS
-    mul $t2, $t2, 100
-
-    ble $t1, $t0, seeds_le_water
-    bgt $t0, $t2    # water < seeds. if (water < fire_starters)
-    li  $t3, 0      # least water
-    j   done_set_resource
-
-seeds_le_water:
-    ble $t1, $t2, least_seeds
-    li  $t3, 2  # least fire starters
-    j   done_set_resource
-
-least_seeds:
-    li  $t3, 1
-    j   done_set_resource
-
-done_set_resource:
-    sw  $t3, SET_RESOURCE_TYPE
-#==============================
