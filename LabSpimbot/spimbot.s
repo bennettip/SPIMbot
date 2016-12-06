@@ -57,193 +57,552 @@ solution_data: .space 328
 requested_flag: .space 4
 received_flag: .space 4
 
+puzzle_queue: .space 20480	#maximum 5
+queue_start: .space 4
+queue_end: .space 4
+requested_puzzles: .space 4
+received_puzzles: .space 4
+
+timer_cause: .space 4
+currently_moving_flag: .space 4
+
+three: .float 3.0
+five: .float 5.0
+PI: .float 3.141592
+F180: .float 180.0
+
+fire_locations: .space 4008
+harvest_locations: .space 4008
+
 .text
 main:
-	# go wild
-	# the world is your oyster :)
 
-	#saves registers. DO I EVEN NEED TO DO THIS? WE NEVER EXIT THE FUNCTION
-	sub	$sp, $sp, 36
-	sw	$ra, 0($sp)	
-	sw	$s0, 4($sp)	
-	sw	$s1, 8($sp)	
-	sw	$s2, 12($sp)	
-
-	sw	$s3, 16($sp)	
-	sw	$s4, 20($sp)	
-	sw	$s5, 24($sp)	#$a0. may not need these
-	sw	$s6, 28($sp)	#$a1. may not need these.
-	
-
-	# enable interrupt. TO COMBINE WITH BENNETT/DANIEL'S CODE
 	li	$t0, REQUEST_PUZZLE_INT_MASK	# puzzle interrupt enable bit
 	or	$t0, $t0, 1			# global interrupt enable
 	mtc0	$t0, $12			# set interrupt mask (Status register)
 
-	#initialization
-	la	$s0, solution_data	#address for solution
-	la	$s1, puzzle_1_data	#address for puzzle 1
-	la	$s2, puzzle_2_data	#address for puzzle 2
-	la	$s3, requested_flag
-	la	$s4, received_flag
+	la	$t3, requested_puzzles
+	la	$t4, received_puzzles
 
 	li	$t0, 0
-	sw	$t0, 0($s3)	#flag. 0 = nothing requested; 1 = 1 requested; 2 = 2 requested
-	sw	$t0, 0($s4)	#flag. 0 = nothing received; 1 = 1 received only; 2 = 2 received only; 3 = both received
+	sw	$t0, 0($t3)	#flag. 0 = nothing requested; 1 = 1 requested; 2 = 2 requested
+	sw	$t0, 0($t4)	#flag. 0 = nothing received; 1 = 1 received only; 2 = 2 received only; 3 = both received
 
-	move	$s5, $a0 #may not need this statement
-	move	$s6, $a1 #may not need this statement
-
-	li	$t0, 0	# 0 for water, 1 for seeds, 2 for fire starters [to change next time]
-	sw	$t0, SET_RESOURCE_TYPE
-
-	li	$t0, 0
-	sw	$t0, VELOCITY
-
-main_after_init:
-
-	#note only one thing
-	li	$t0, 1
-	sw	$t0, VELOCITY
-	lw	$t3, 0($s3)
-	lw	$t4, 0($s4)
-	beq	$t3, 0, request_1		#if i have not requested anything, request puzzle_1
-
-	beq	$t4, 1, request_2_before_solving_1		#if i have puzzle 1, solve it
-	beq	$t4, 2, request_1_before_solving_2		#if i have puzzle 2, solve it
-
-
+	la	$t3, queue_start
+	la	$t4, queue_end
 	li	$t0, -1
-	sw	$t0, VELOCITY
+	sw	$t0, 0($t3)
+	sw	$t0, 0($t4)
 
-	j	main_after_init			#loop if i already requested for puzzles but I haven't received anything yet
+new_main:
+	la	$t0, timer_cause
+	lw	$t0, 0($t0)
+	beq	$t0, 0, check_for_fire		#not moving or doing anything, check for fire
+	beq	$t0, 1, reached_fire		#i can put out fire now
+	beq	$t0, 2, reached_harvest		#i can harvest now
+	j	solve_puzzle_start
 
-request_1:
-	sw	$s1, REQUEST_PUZZLE		#request for puzzle 1
-	li	$t0, 1
-	sw	$t0, 0($s3)			#set flag to 'requested 1'
+check_for_fire:
+	#check if enough water first. if not, j check_for_harvest
 
-	j	main_after_init
+	la	$t0, fire_locations
+	lw	$t1, 0($t0)			#value of start
+	beq	$t1, -1, check_for_harvest	#continue if no fire
 
-request_1_before_solving_2:
-	sw	$s1, REQUEST_PUZZLE		#request for puzzle 1
-	li	$t0, 1
-	sw	$t0, 0($s3)			#set flag to 'requested 1'
+	mul	$t2, $t1, 4		#start location * 4
+	add	$t0, $t0, 8		#first element (location 0)
+	add	$t0, $t0, $t2		#ith element
+	lw	$t1, 0($t0)		#location of fire
 
-	j	before_puzzle_2
+	srl	$a0, $t1, 16		#x
+	li	$a1, 65535		#0000000000000000 1111111111111111
+	and	$a1, $t1, $a1		#y
 
-request_2_before_solving_1:
-	sw	$s2, REQUEST_PUZZLE		#request for puzzle 2
-	li	$t0, 2
-	sw	$t0, 0($s3)			#set flag to 'requested 2'
+	jal	xy_index_to_tilenum
 
-	j	before_puzzle_1
+	move	$a0, $v0
+	jal	move_to
+	li	$t0, 5			#timer will be caused by fire
+	sw	$t0, timer_cause
+	j	solve_puzzle_start
 
-before_puzzle_1:
-	j	zero_solution_1
+reached_fire:
+	sw	$a0, PUT_OUT_FIRE
+	la	$t0, timer_cause
+	li	$t1, 0
+	sw	$t1, 0($t0)
 
-solve_puzzle_1:
-	move	$a0, $s0			#solution address
-	move	$a1, $s1			#puzzle 1 address
-	jal	recursive_backtracking
-	sw	$s0, SUBMIT_SOLUTION
+	la	$t0, fire_locations
+	lw	$t1, 0($t0)		#value of start
+	lw	$t2, 4($t0)		#value of end
+	
+	beq	$t1, $t2, no_more_fires
+	add	$t1, $t1, 1		#go to next
+	sw	$t1, 0($t0)
+	j	new_main_end
 
-	lw	$t4, 0($s4)
-	beq	$t4, 3, set_3_to_2
-	li	$t4, 0
-	sw	$t4, 0($s4)
+no_more_fires:
+	la	$t0, fire_locations
+	li	$t1, -1
+	sw	$t1, 0($t0)
+	sw	$t1, 4($t0)
 
-	j	main_after_init
+	j	new_main_end
 
-set_3_to_2:
-	li	$t4, 2
-	sw	$t4, 0($s4)
-	j	main_after_init
+check_for_harvest:
+	la	$t0, harvest_locations
+	lw	$t1, 0($t0)		#value of start
+	beq	$t1, -1, new_main_end	#loop if no fire
 
-zero_solution_1:
+	mul	$t2, $t1, 4		#start location * 4
+	add	$t0, $t0, 8		#first element (location 0)
+	add	$t0, $t0, $t2		#ith element
+	lw	$t1, 0($t0)		#location of harvest
+
+	srl	$a0, $t1, 16		#x
+	li	$a1, 65535		#0000000000000000 1111111111111111
+	and	$a1, $t1, $a1		#y
+
+	jal	xy_index_to_tilenum
+
+	move	$a0, $v0
+	jal	move_to
+	li	$t0, 6			#timer will be caused by harvest
+	sw	$t0, timer_cause
+	j	solve_puzzle_start
+
+reached_harvest:
+	sw	$a0, HARVEST_TILE
+	la	$t0, timer_cause
+	li	$t1, 0
+	sw	$t1, 0($t0)
+
+	la	$t0, harvest_locations
+	lw	$t1, 0($t0)		#value of start
+	lw	$t2, 4($t0)		#value of end
+	
+	beq	$t1, $t2, no_more_harvest
+	add	$t1, $t1, 1		#go to next
+	sw	$t1, 0($t0)
+	j	new_main_end
+
+no_more_harvest:
+	la	$t0, harvest_locations
+	li	$t1, -1
+	sw	$t1, 0($t0)
+	sw	$t1, 4($t0)
+
+	j	new_main_end
+
+new_main_end:
+	j	new_main
+
+puzzle_request: #precondition, less than 5 puzzles requested
+
+	la	$t0, queue_end
+	lw	$t1, 0($t0)		#queue end index
+	add	$t1, $t1, 1
+	li	$t7, 5
+	div	$t1, $t7
+	mfhi	$t2		#queue_end % 5
+	sw	$t2, 0($t0)
+
+	la	$t0, puzzle_queue
+	mul	$t2, $t2, 4096		#start location * 4096
+	add	$t0, $t0, $t2		#ith element	
+	sw	$t0, REQUEST_PUZZLE	#request for puzzle 1
+
+	la	$t0, requested_puzzles
+	lw	$t3, 0($t0)
+	add	$t3, $t3, 1
+	sw	$t3, 0($t0)
+
+	sub	$t3, $t1, $t3
+	blt	$t3, -1, start_greater_than_end
+	add	$t3, $t3, 1	#queue start
+	la	$t0, queue_start
+	sw	$t3, 0($t0)
+
+	jr	$ra
+
+start_greater_than_end:
+	li	$t5, 5
+	add	$t3, $t5, $t3
+	add	$t3, $t3, 1
+	la	$t0, queue_start
+	sw	$t3, 0($t0)
+
+	jr	$ra
+
+solve_puzzle_start:
+	sub	$sp, $sp, 24
+	sw	$ra, 0($sp)	
+	sw	$s0, 4($sp)	
+	sw	$s1, 8($sp)	
+	sw	$a0, 12($sp)
+	sw	$a1, 16($sp)
+	sw	$v0, 20($sp)
+	
+	la	$s0, solution_data
+	la	$s1, puzzle_queue
+
+	la	$t3, received_puzzles
+	lw	$t4, 0($t3)	#received_puzzles
+	bgt	$t4, 0, solve_received_puzzle_before
+	la	$t3, requested_puzzles
+	lw	$t4, 0($t3)	#requested puzzles
+	bge	$t4, 5, solve_puzzle_end
+	jal	puzzle_request
+	j	solve_puzzle_end
+
+
+zero_solution:
 	li	$t0, 0
-	j	zero_solution_loop_1
+	j	zero_solution_loop
 
-zero_solution_loop_1:
-	bge	$t0, 82, solve_puzzle_1
+zero_solution_loop:
+	bge	$t0, 82, solve_received_puzzle
 	mul	$t1, $t0, 4
 	add	$t1, $t1, $s0
 	li	$t2, 0
 	sw	$t2, 0($t1)
 	add	$t0, $t0, 1
-	j	zero_solution_loop_1
+	j	zero_solution_loop
 
+solve_received_puzzle_before:
+	j	zero_solution
 
-before_puzzle_2:
-	j	zero_solution_2
+solve_received_puzzle:
+	la	$t0, queue_start
+	lw	$t1, 0($t0)
+	mul	$t3, $t1, 4096			#start location*4096
+	add	$t2, $s1, $t3			#location of puzzle
 
-zero_solution_2:
-	li	$t0, 0
-	j	zero_solution_loop_2
-
-zero_solution_loop_2:
-	bge	$t0, 82, solve_puzzle_2
-	mul	$t1, $t0, 4
-	add	$t1, $t1, $s0
-	li	$t2, 0
-	sw	$t2, 0($t1)
-	add	$t0, $t0, 1
-	j	zero_solution_loop_2
-
-solve_puzzle_2:
 	move	$a0, $s0			#solution address
-	move	$a1, $s2			#puzzle 2 address
+	move	$a1, $t2			#puzzle address
 	jal	recursive_backtracking
 	sw	$s0, SUBMIT_SOLUTION
 
-	lw	$t4, 0($s4)
-	beq	$t4, 3, set_3_to_1
-	li	$t4, 0
-	sw	$t4, 0($s4)
-	j	main_after_init
+	la	$t4, received_puzzles
+	lw	$t5, 0($t4)
+	sub	$t5, $t5, 1
+	sw	$t5, 0($t4)
 
-set_3_to_1:
-	li	$t4, 1
-	sw	$t4, 0($s4)
-	j	main_after_init	
+	la	$t4, requested_puzzles
+	lw	$t5, 0($t4)
+	sub	$t5, $t5, 1
+	sw	$t5, 0($t4)
+	beq	$t5, 0, reset_queue
 
+	la	$t0, queue_start
+	lw	$t1, 0($t0)
+	add	$t1, $t1, 1			#increase queue start
+	li	$t7, 5
+	div	$t1, $t7
+	mfhi	$t2	#new index of queue_start
+	sw	$t2, 0($t0)
+	jal	puzzle_request
+
+	j	solve_puzzle_end
+
+reset_queue:
+	la	$t0, queue_start
+	la	$t1, queue_start
+	li	$t2, -1
+	sw	$t2, 0($t0)
+	sw	$t2, 0($t1)
+	jal	puzzle_request
+	j	solve_puzzle_end
+
+solve_puzzle_end:
+	lw	$ra, 0($sp)	
+	lw	$s0, 4($sp)	
+	lw	$s1, 8($sp)	
+	lw	$a0, 12($sp)
+	lw	$a1, 16($sp)
+	lw	$v0, 20($sp)
+	add	$sp, $sp, 24
+	j	new_main
+
+######################DANIEL'S CODE##########################
+# -----------------------------------------------------------------------
+# calc_tile_x - computes the x coordinate of a given tile number
+# $a0 - tile number
+# returns the x coordinate
+# -----------------------------------------------------------------------
+calc_tile_x:
+#given the tile number(0-99) ($a0), returns the corresponding x coordinate (center of tile)
+	move	$t0, $a0		#tilenum
+	li		$t5, 10
+	div		$t0, $t5		#LO = tilenum/10, HI = tilenum%10
+	mfhi	$t1				#remainder = tilenum%num
+	mul		$t1, $t1, 30
+	add		$t1, $t1, 15	#$t1 is now the x-coordinate of this tiles center
+	move	$v0, $t1
+	jr		$ra
+
+# -----------------------------------------------------------------------
+# calc_tile_y - computes the y coordinate of a given tile number
+# $a0 - tile number
+# returns the y coordinate
+# -----------------------------------------------------------------------
+calc_tile_y:
+#given the tile number(0-99) ($a0), returns the corresponding y coordinate (center of tile)
+	move	$t0, $a0		#tilenum
+	li		$t5, 10
+	div		$t0, $t5			#LO = tilenum/10, HI = tilenum%10
+	mflo	$t1				#remainder = tilenum/num (truncated) (79/10 = 7)
+	mul		$t1, $t1, 30
+	add		$t1, $t1, 15	#$t1 is now the y-coordinate of this tiles center
+	move	$v0, $t1
+	jr		$ra
+
+# -----------------------------------------------------------------------
+# sb_arctan - computes the arctangent of y / x
+# $a0 - x
+# $a1 - y
+# returns the arctangent
+# -----------------------------------------------------------------------
+sb_arctan:
+	li	$v0, 0		# angle = 0;
+
+	abs	$t0, $a0	# get absolute values
+	abs	$t1, $a1
+	ble	$t1, $t0, no_TURN_90
+
+	## if (abs(y) > abs(x)) { rotate 90 degrees }
+	move	$t0, $a1	# int temp = y;
+	neg	$a1, $a0	# y = -x;
+	move	$a0, $t0	# x = temp;
+	li	$v0, 90		# angle = 90;
+
+	no_TURN_90:
+	bgez	$a0, pos_x 	# skip if (x >= 0)
+
+	## if (x < 0)
+	add	$v0, $v0, 180	# angle += 180;
+
+pos_x:
+	mtc1	$a0, $f0
+	mtc1	$a1, $f1
+	cvt.s.w $f0, $f0	# convert from ints to floats
+	cvt.s.w $f1, $f1
+
+	div.s	$f0, $f1, $f0	# float v = (float) y / (float) x;
+
+	mul.s	$f1, $f0, $f0	# v^^2
+	mul.s	$f2, $f1, $f0	# v^^3
+	l.s	$f3, three	# load 5.0
+	div.s 	$f3, $f2, $f3	# v^^3/3
+	sub.s	$f6, $f0, $f3	# v - v^^3/3
+
+	mul.s	$f4, $f1, $f2	# v^^5
+	l.s	$f5, five	# load 3.0
+	div.s 	$f5, $f4, $f5	# v^^5/5
+	add.s	$f6, $f6, $f5	# value = v - v^^3/3 + v^^5/5
+
+	l.s	$f8, PI		# load PI
+	div.s	$f6, $f6, $f8	# value / PI
+	l.s	$f7, F180	# load 180.0
+	mul.s	$f6, $f6, $f7	# 180.0 * value / PI
+
+	cvt.w.s $f6, $f6	# convert "delta" back to integer
+	mfc1	$t0, $f6
+	add	$v0, $v0, $t0	# angle += delta
+
+	jr 	$ra
+
+# -----------------------------------------------------------------------
+# euclidean_dist - computes sqrt(x^2 + y^2)
+# $a0 - x
+# $a1 - y
+# returns the distance
+# -----------------------------------------------------------------------
+euclidean_dist:
+	mul	$a0, $a0, $a0	# x^2
+	mul	$a1, $a1, $a1	# y^2
+	add	$v0, $a0, $a1	# x^2 + y^2
+	mtc1	$v0, $f0
+	cvt.s.w	$f0, $f0	# float(x^2 + y^2)
+	sqrt.s	$f0, $f0	# sqrt(x^2 + y^2)
+	cvt.w.s	$f0, $f0	# int(sqrt(...))
+	mfc1	$v0, $f0
+	jr	$ra
+
+xy_index_to_tilenum:
+	mul		$t0, $a1, 10
+	add		$t0, $t0, $a0
+	move	$v0, $t0
+
+	jr		$ra
+
+move_to:
+	sub		$sp, $sp, 36
+	sw		$ra, 0($sp)
+	sw		$s0, 4($sp)		#destx
+	sw		$s1, 8($sp)		#desty
+	sw		$s2, 12($sp)	#botx
+	sw		$s3, 16($sp)	#boty
+	sw		$s4, 20($sp)	#x_diff
+	sw		$s5, 24($sp)	#y_diff
+	sw		$s6, 28($sp)	#angle returned by arctan
+	sw		$a0, 32($sp)	#dest_tile_number
+
+	#STOP MOVING FIRST
+	sw		$zero, VELOCITY
+
+	#FIND DEST X-COORDINATE
+	jal		calc_tile_x
+	move	$s0, $v0		#dest x-coordinate
+	#restore
+	lw		$ra, 0($sp)
+	lw		$a0, 32($sp)
+	#CALCULATE THE X DIFFERENCE
+	li		$s2, BOT_X		#get botx
+	lw		$s2, 0($s2)
+	sub		$s4, $s0, $s2	#x_diff = destx - botx
+
+
+	#FIND DEST Y-COORDINATE
+	jal		calc_tile_y
+	move	$s1, $v0		#dest y-coordinate
+	#restore
+	lw		$ra, 0($sp)
+	lw		$a0, 32($sp)
+	#CALCULATE THE Y DIFFERENCE
+	li		$s3, BOT_Y		#get boty
+	lw		$s3, 0($s3)
+	sub		$s5, $s1, $s3	#y_diff = desty - boty
+
+	#CALCULATE THE ARCTAN OF X_DIFF, Y_DIFF
+	move	$a0, $s4		#x_diff
+	move	$a1, $s5		#y_diff
+	jal		sb_arctan
+	#restore
+	lw		$ra, 0($sp)
+	lw		$a0, 32($sp)
+
+	move	$s6, $v0		#angle returned by arctan
+	#turn the bot to the angle
+	li		$t1, 1
+	sw		$s6, ANGLE
+	sw		$t1, ANGLE_CONTROL
+
+	#we are now facing directly to the tile we want to go to.
+	#calculate the euclidean dist
+	move	$a0, $s4		#x_diff
+	move	$a1, $s5		#y_diff
+	jal		euclidean_dist
+	move	$t0, $v0		#hypotenuse dist
+	#restore
+	lw		$ra, 0($sp)
+	lw		$a0, 32($sp)
+	#calculate the cycles needed to get to the dest tile
+	mul		$t2, $t0, 1000	#multiply dist by 1000 so its more precise = number of cycles before timer interrupt
+
+	#G0!
+	li		$t9, 10
+	sw		$t9, VELOCITY
+	li		$t1, 1
+	sw		$t1, currently_moving_flag	#raise moving flag
+
+	#request timer interrupt
+	lw		$t1, TIMER		#get current cycle
+	add		$t1, $t1, $t2
+	sw		$t1, TIMER		#request timer interrupt at cycle = $t1
+
+	move_to_done:
+	#restore all saved registers
+	lw		$ra, 0($sp)
+	lw		$s0, 4($sp)		#destx
+	lw		$s1, 8($sp)		#desty
+	lw		$s2, 12($sp)	#botx
+	lw		$s3, 16($sp)	#boty
+	lw		$s4, 20($sp)	#x_diff
+	lw		$s5, 24($sp)	#y_diff
+	lw		$s6, 28($sp)	#angle returned by arctan
+	lw		$a0, 32($sp)	#dest_tile_number
+	add		$sp, $sp, 36
+	jr		$ra
 
 #############################################################
-.kdata				# interrupt handler data (separated just for readability)
-chunkIH:	.space 20	# space for 3 registers
-non_intrpt_str:	.asciiz "Non-interrupt exception\n"
-unhandled_str:	.asciiz "Unhandled interrupt type\n"
+.kdata                      # interrupt handler data (separated just for readability)
+chunkIH:        .space 20   # space for two registers
+non_intrpt_str:	.asciiz     "Non-interrupt exception\n"
+unhandled_str:	.asciiz     "Unhandled interrupt type\n"
 
 .ktext 0x80000180
 interrupt_handler:
-.set noat
-	move	$k1, $at		# Save $at                               
-.set at
-	la	$k0, chunkIH
-	sw	$a0, 0($k0)		# Get some free registers
-	sw	$a1, 4($k0)                  
-	sw	$v0, 8($k0)		# by storing them to a global variable     
-	mflo	$a0
-	sw	$a0, 12($k0)
-	mfhi	$a0
-	sw	$a0, 16($k0)
+    .set noat
+    move	$k1, $at        # Save $at # don't change k1!
+    .set at
+    la      $k0, chunkIH
+    sw      $a0, 0($k0)     # Get some free registers
+    sw      $a1, 4($k0)     # by storing them to a global variable
+    sw      $v0, 8($k0)		# by storing them to a global variable
 
-	mfc0	$k0, $13		# Get Cause register                       
-	srl	$a0, $k0, 2                
-	and	$a0, $a0, 0xf		# ExcCode field                            
-	bne	$a0, 0, non_intrpt         
+    mfc0    $k0, $13        # Get Cause register
+    srl     $a0, $k0, 2
+    and     $a0, $a0, 0xf   # ExcCode field
+    bne     $a0, 0, non_intrpt
 
-interrupt_dispatch:			# Interrupt:                             
-	mfc0	$k0, $13		# Get Cause register, again                 
-	beq	$k0, 0, done		# handled all outstanding interrupts     
+interrupt_dispatch:                             # Interrupt:
+    mfc0	$k0, $13                            # Get Cause register, again
+    beq     $k0, 0, done                        # handled all outstanding interrupts
 
-	and	$a0, $k0, REQUEST_PUZZLE_INT_MASK	# is there a puzzle interrupt?                
-	bne	$a0, 0, puzzle_interrupt
+    and     $a0, $k0, ON_FIRE_MASK              # is there a on-fire interrupt?
+    bne     $a0, 0, on_fire_interrupt
 
-	li	$v0, PRINT_STRING	# Unhandled interrupt types
-	la	$a0, unhandled_str
-	syscall
-	j	done
+	and     $a0, $k0, TIMER_MASK                # is there a timer interrupt?
+	bne     $a0, 0, timer_interrupt
+
+    and     $a0, $k0, REQUEST_PUZZLE_INT_MASK   # is there a puzzle interrupt?
+    bne     $a0, 0, puzzle_interrupt
+
+	# add dispatch for other interrupt types here.
+    #and     $a0, $k0, SOME_MASK
+    #bne     $a0, 0, some_interrupt
+
+	li      $v0, PRINT_STRING                   # Unhandled interrupt types
+    la      $a0, unhandled_str
+    syscall
+    j       done
+
+on_fire_interrupt:
+    sw  $0, ON_FIRE_ACK     # acknowledge interrupt
+    # get location
+    lw  $k0, GET_FIRE_LOC
+
+    srl $a0, $k0, 16
+    sw  $a0, fireX
+    sll $a0, $k0, 16
+    srl $a0, $a0, 16
+    sw  $a0, fireY
+    li  $k0, 1
+    sw  $k0, fire_flag      # fire_flag = 1
+
+    j	interrupt_dispatch  # see if other interrupts are waiting
+
+timer_interrupt:
+	sw	$a1, TIMER_ACK              # acknowledge timer interrupt
+	# STOP BOT. We've reached our desired location
+	sw	$zero, VELOCITY
+    li  $t0, 1
+	sw	$t0, currently_moving_flag   # lower moving flag
+	j	interrupt_dispatch
+
+puzzle_interrupt:
+	sw	$a0, REQUEST_PUZZLE_ACK
+	la	$a0, received_puzzles
+	lw	$k0, 0($a0)
+	add	$k0, $k0, 1
+	sw	$k0, 0($a0)
+	j	interrupt_dispatch
+
+# some_interrupt: # template
+#    sw  $0, SOME_ACK
+#    # code
+#    j   interrupt_dispatch
 
 non_intrpt:				# was some non-interrupt
 	li	$v0, PRINT_STRING
@@ -251,45 +610,14 @@ non_intrpt:				# was some non-interrupt
 	syscall				# print out an error message
 	# fall through to done
 
-puzzle_interrupt:
-	sw	$a0, REQUEST_PUZZLE_ACK	# acknowledge interrupt
-
-	la	$k0, requested_flag
-	lw	$k0, 0($k0)		#value of requested_flag
-	beq	$k0, 1, set_received_1	#if i requested puzzle 1
-	la	$k0, received_flag
-	lw	$v0, 0($k0)		#value of received_flag
-	beq	$v0, 1, set_to_3	#otherwise i have puzzle 2. if i already have puzzle 1
-	li	$v0, 2			#otherwise, i only have puzzle 2
-	sw	$v0, 0($k0)
-
-	j	interrupt_dispatch
-
-set_received_1:
-	la	$k0, received_flag
-	lw	$v0, 0($k0)		#value of received_flag
-	beq	$v0, 2, set_to_3	#if i already have puzzle 2 and received puzzle 1
-	li	$v0, 1			#otherwise, i received puzzle 1 only
-	sw	$v0, 0($k0)
-	j	interrupt_dispatch
-
-set_to_3:
-	li	$v0, 3			#set that both puzzle 1 and 2 were received
-	sw	$v0, 0($k0)
-	j	interrupt_dispatch
-
 done:
-	la	$k0, chunkIH
-	lw	$a0, 12($k0)
-	mtlo	$a0
-	lw	$a0, 16($k0)
-	mthi	$a0
-	lw	$a0, 0($k0)		# Restore saved registers
-	lw	$a1, 4($k0)
-	lw	$v0, 8($k0)
-.set noat
-	move	$at, $k1		# Restore $at
-.set at 
+	la      $k0, chunkIH
+	lw      $a0, 0($k0) # Restore saved registers
+	lw      $a1, 4($k0)
+	lw      $v0, 8($k0)
+	.set noat
+	move	$at, $k1    # Restore $at
+	.set at
 	eret
 
 
