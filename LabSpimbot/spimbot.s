@@ -513,6 +513,7 @@ check_side_tiles:
 	#check 4 sides to see if anything growing
 	#get up tile
 	add		$t1, $s0, -10		#get up tilenum
+	move	$t3, $t1
 	#check if we'd be out of bounds
 	blt		$t1, $zero, check_right_tile	#because up tile out of bounds, don't check
 	mul		$t1, $t1, 16		#offset of up tile
@@ -523,7 +524,7 @@ check_side_tiles:
 	lw		$t2, 4($t1)
 	beq		$t2, $zero, update_next_seed_location
 	#if not ours
-	move	$a0, $t1
+	move	$a0, $t3
 	li		$t6, 8		#<--indicated we're going to set a fire to a tile
 	sw		$t6, timer_cause
 	jal		move_to
@@ -531,6 +532,7 @@ check_side_tiles:
 
 check_right_tile:#get right tile
 	add		$t1, $s0, 1		#get right tilenum
+	move	$t3, $t1
 	li		$t2, 270
 	lw		$t5, BOT_X
 	bge		$t5, $t2, check_down_tile
@@ -542,7 +544,7 @@ check_right_tile:#get right tile
 	lw		$t2, 4($t1)
 	beq		$t2, $zero, update_next_seed_location
 	#if not ours
-	move	$a0, $t1
+	move	$a0, $t3
 	li		$t6, 8		#<--indicated we're going to set a fire to a tile
 	sw		$t6, timer_cause
 	jal		move_to
@@ -550,6 +552,7 @@ check_right_tile:#get right tile
 
 check_down_tile:	#get down tile
 	add		$t1, $s0, 10		#get down tilenum
+	move	$t3, $t1
 	li		$t2, 99
 	bgt		$t1, $t2, check_left_tile
 	mul		$t1, $t1, 16		#offset of down tile
@@ -560,7 +563,8 @@ check_down_tile:	#get down tile
 	lw		$t2, 4($t1)
 	beq		$t2, $zero, update_next_seed_location
 	#if not ours
-	move	$a0, $t1
+
+	move	$a0, $t3
 	li		$t6, 8		#<--indicated we're going to set a fire to a tile
 	sw		$t6, timer_cause
 	jal		move_to
@@ -568,6 +572,7 @@ check_down_tile:	#get down tile
 
 check_left_tile:	#get left tile
 	add		$t1, $s0, -1		#get left tilenum
+	move	$t3, $t1
 	li		$t2, 29
 	lw		$t5, BOT_X
 	ble		$t5, $t2, done_checking_neighbor_tiles
@@ -579,7 +584,7 @@ check_left_tile:	#get left tile
 	lw		$t2, 4($t1)
 	beq		$t2, $zero, update_next_seed_location
 	#if not ours
-	move	$a0, $t1
+	move	$a0, $t3
 	li		$t6, 8		#<--indicated we're going to set a fire to a tile
 	sw		$t6, timer_cause
 	jal		move_to
