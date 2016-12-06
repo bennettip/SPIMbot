@@ -48,10 +48,11 @@ REQUEST_PUZZLE_ACK      = 0xffff00d8
 REQUEST_PUZZLE_INT_MASK = 0x800
 
 .data
-#interrupt flags
+#interrupt data
 fire_flag:			.space 4	#32 bit, 1 or 0
-max_growth_flag:	.space 4	#32 bit, 1 or 0
-puzzle_flag:		.space 4	#32 bit, 1 or 0
+
+max_growth_flag:		.space 4	#32 bit, 1 or 0
+max_growth_location:	.space 4
 #for the trig functions
 three:	.float	3.0
 five:	.float	5.0
@@ -59,16 +60,22 @@ PI:	.float	3.141592
 F180:	.float  180.0
 #misc use
 currently_moving_flag:		.space 4	#32 bit, 1 or 0
-
+next_seed_location:			.space 4	#stores the next location to plant(0-99)
+timer_cause:				.space 4	#0-nothing,
+										#interrupt happened: 1-fire, 2-harvest, 3-seed planting, 4-watering
+										#waiting for interrupt: 5-fire, 6-harvest, 7-seed planting, 8-watering
 
 #TODO: Still need data structures for tile array, puzzles
+#for tile array
+.align 2
+tile_data: .space 1600
 
 .text
 main: #This part used to initialize values
 	#initialize interrupt flags
-	li		fire_flag, 0
-	li		max_growth_flag, 0
-	li		currently_moving_flag, 0
+#li		fire_flag, 0
+#	li		max_growth_flag, 0
+#	li		currently_moving_flag, 0
 
 	#Enable all interrupts
 	li		$t4, BONK_MASK
@@ -79,56 +86,35 @@ main: #This part used to initialize values
 	or		$t4, $t4, 1			#global interrupt enable
 	mtc0	$t4, $12		#set interrupt mask (Status register)
 
+	#initialize
+	sw		$zero, currently_moving_flag
+	sw		$zero, timer_cause
+
+	#initialize next_seed_location
+	lw		$t0, BOT_X	#x-coordinate(0-300)
+	lw		$t1, BOT_Y	#y-coordinate(0-300)
+	move	$a0, $t0
+	move	$a1, $t1
+	jal		xy_coordinate_to_tilenum
+	sw		$v0, next_seed_location	#curr bot tile
+
+	lw		$t0, GET_NUM_FIRE_STARTERS
 main_loop:
-	bne		currently_moving_flag, $zero, bot_currently_moving
-	#If bot stopped, then we can proceed to do these tasks
-
-	#If our current tile is on fire, put it out! might reach here after moving to a fire tile
-
-	#If our current tile has a grown crop, harvest! might reach here after moving to a grown tile
-
-	#Here, we can assume that any puzzles worked on while moving have been finished right?
-	#	-if we get to the desired tile before we finish the puzzle, we'd get interrupted/stopped, then continue solving it right?
-
-	#Check for fire
-	beq		fire_flag, $zero, checked_fire
-	#THIS FUNCTION SHOULDN'T PUT OUT THE FIRE; this should j to bot_currently_moving after we start moving towards fire
-	jal		(go_to_fire_function)
-
-checked_for_fire:
-	#Check if we need to request puzzles <-- here in priority because puzzles take time to arrive
-	# Ordered by priority (Can we request more than one puzzle at once?)
-	# 0 - water - If we have below the water needed to put out 3 fires
-	# 1 - seeds - If we have below the seed threshold
-	# 2 - fire starters
-
-checked_if_needed_puzzles:
-	#Check for fully grown crop
-	beq		max_growth_flag, $zero, checked_for_grown_crop
-	#THIS FUNCTION SHOULDN'T HARVEST; this should j to bot_currently_moving after we start moving towards grown crop
-	jal		(go_to_grown_crop_function)
-
-checked_for_grown_crop:
-	#Planting algorithm
-#		-At first, plant in a spiral/circle pattern such that fire can't spread among crops
-#		-If enemy not aggressive, switch to a method that takes advantage of water spread. (if we have time?)
-
-	#Watering algorithm
-
-	j		main_loop
-
-bot_currently_moving:
-	#Check if there's a puzzle available to solve
-	bne	puzzle_flag, $zero, (solve_puzzle_function)
+	lw		$s0, timer_cause
 
 
+	bne		$zero, $s0, cont
+	#go to plant
+	jal		go_to_next_seed_location
+cont:
+	li		$t0, 3
+	bne		$t0, $s0, cont2
 
-	#This snippet of code used to test moving--------------------------------
-	#	li		$a0, 12	#bot will move to tile at index 12 in the tile array
-	#	jal		move_to
-	#useless_loop:
-	#	j		useless_loop
-	#-------------------------------------------------------------------------
+	jal		plant_and_water
+cont2:
+
+
+do_puzzle:
 
 	j		main_loop
 #End of main_loop
@@ -139,11 +125,194 @@ j	main
 #HELPER FUNCTIONS---------------------------------------------------------------------------------
 
 # -----------------------------------------------------------------------
+# xy_index_to_tilenum: Converts xy(0-9) coordinates to tilenum
+# $a0 - x
+# $a1 - y
+# returns - corresponding tilenum(0-99)
+# -----------------------------------------------------------------------
+xy_index_to_tilenum:
+	mul		$t0, $a1, 10
+	add		$t0, $t0, $a0
+	move	$v0, $t0
+
+	jr		$ra
+
+# -----------------------------------------------------------------------
+# xy_coordinate_to_tilenum: Converts xy(0-300) coordinates to tilenum
+# $a0 - x
+# $a1 - y
+# returns - corresponding tilenum(0-99)
+# -----------------------------------------------------------------------
+xy_coordinate_to_tilenum:
+	li		$t0, 30
+	div		$a0, $t0	#LO = x/30, HI = x%30
+	mflo	$a0			#x/30
+
+	div		$a1, $t0
+	mflo	$a1			#y/30
+
+	mul		$t0, $a1, 10
+	add		$t0, $t0, $a0
+	move	$v0, $t0
+	jr		$ra
+
+
+# -----------------------------------------------------------------------
+# go_to_next_seed_location: start moving to next_seed_location
+# -----------------------------------------------------------------------
+go_to_next_seed_location:
+	sub		$sp, $sp, 4
+	sw		$ra, 0($sp)
+
+	lw		$t0, next_seed_location
+	move	$a0, $t0
+	jal		move_to
+	#update timer_cause flag
+	li		$t0, 7			#indicates waiting for seed planting
+	sw		$t0, timer_cause
+
+	lw		$ra, 0($sp)
+	add		$sp, $sp, 4
+	j		do_puzzle
+
+
+# -----------------------------------------------------------------------
+# plant_and_water: plant and water (if possible) at curr location
+# -----------------------------------------------------------------------
+plant_and_water:
+	sub		$sp, $sp, 12
+	sw		$ra, 0($sp)
+	sw		$s0, 4($sp)		#curr bot tile
+	sw		$s1, 8($sp)		#tile_data
+
+	#get current number of seeds
+	lw		$t0, GET_NUM_SEEDS
+	ble		$t0, $zero, planting_and_watering_done #no more seeds
+
+
+	#if we have seeds
+	lw		$t0, BOT_X	#x-coordinate(0-300)
+	lw		$t1, BOT_Y	#y-coordinate(0-300)
+	move	$a0, $t0
+	move	$a1, $t1
+	jal		xy_coordinate_to_tilenum
+	move	$s0, $v0	#curr bot tile
+	#get updated tile array
+	la		$s1, tile_data
+	sw		$s1, TILE_SCAN		#tile_data has array of TileInfo structs
+	#check this tile to see if it's empty
+	mul		$t1, $s0, 16		#offset of curr tile
+	add		$t1, $t1, $s1		#tile of curr tile
+	lw		$t2, 0($t1)			#load state of curr tile
+	beq		$t2, $zero, check_side_tiles
+	#if this tile if full, check to see if we can set fire to this tile if it's our enemy's crops
+	lw		$t2, 4($t1)			#0 - ours, 1 - enemy
+	beq		$t2, $zero, planting_and_watering_done
+	#if this tile is our enemy's
+	sw		$zero, BURN_TILE
+	j		planting_and_watering_done
+
+check_side_tiles:
+	#check 4 sides to see if anything growing
+	#get up tile
+	add		$t1, $s0, -10		#get up tilenum
+	#check if we'd be out of bounds
+	blt		$t1, $zero, check_right_tile	#because up tile out of bounds, don't check
+	mul		$t1, $t1, 16		#offset of up tile
+	add		$t1, $t1, $s1		#tile of uptile
+	lw		$t2, 0($t1)			#load state of up tile
+	bne		$t2, $zero, planting_and_watering_done
+check_right_tile:#get right tile
+	add		$t1, $s0, 1		#get right tilenum
+	li		$t2, 270
+	lw		$t5, BOT_X
+	bge		$t5, $t2, check_down_tile
+	mul		$t1, $t1, 16		#offset of right tile
+	add		$t1, $t1, $s1		#tile of right tile
+	lw		$t2, 0($t1)
+	bne		$t2, $zero, planting_and_watering_done
+check_down_tile:	#get down tile
+	add		$t1, $s0, 10		#get down tilenum
+	li		$t2, 99
+	bgt		$t1, $t2, check_left_tile
+	mul		$t1, $t1, 16		#offset of down tile
+	add		$t1, $t1, $s1		#tile of downtile
+	lw		$t2, 0($t1)
+	bne		$t2, $zero, planting_and_watering_done
+check_left_tile:	#get left tile
+	add		$t1, $s0, -1		#get left tilenum
+	li		$t2, 29
+	lw		$t5, BOT_X
+	ble		$t5, $t2, done_checking_neighbor_tiles
+	mul		$t1, $t1, 16		#offset of left tile
+	add		$t1, $t1, $s1		#tile of lefttile
+	lw		$t2, 0($t1)
+	bne		$t2, $zero, planting_and_watering_done
+
+done_checking_neighbor_tiles:
+	#WE'RE CLEAR TO PLANT AND WATER at current location!
+	sw		$zero, SEED_TILE		#attempt to plant seed here
+	lw		$t0, GET_NUM_WATER_DROPS
+
+	ble		$t0, $zero, planted
+	#if we can water...
+	li		$t1, 2				#water here
+	sw		$t1, WATER_TILE
+
+
+
+planted:
+	#update next_seed_location
+	lw		$t0, next_seed_location
+
+	li		$t5, 10
+	div		$t0, $t5
+	mflo	$t6			#curr next_seed_location/10
+	add		$t1, $t0, $zero	#curr next_seed_location
+
+	add		$t0, $t0, 2	#increment next_seed_location
+
+	div		$t0, $t5
+	mflo	$t7			#new next_seed_location/10
+	add		$t2, $t0, $zero	#new next_seed_location
+
+	beq		$t6, $t7, next_seed_loc_on_same_row
+	#we changed our row
+	div		$t2, $t5		#new next_seed_location/10
+	mfhi	$t3				#new next_seed_location%10
+	bne		$t3, $zero, currently_on_right_border
+		#if t3 == 0 (currently one left of right border)
+	add		$t0, $t0, 1 # <--- do this only if we're one tile away from right border
+	j		next_seed_loc_on_same_row
+
+currently_on_right_border:
+	add		$t0, $t0, -1 # <--- do this only if we're on the right border
+
+next_seed_loc_on_same_row:
+	li		$t1, 100
+	blt		$t0, $t1, updated_next_seed_location
+	#if next_seed_location >= 99, wrap around
+	sub		$t0, $t0, $t1 #if it was 101, then 101-100 = 1 = new tile number
+
+updated_next_seed_location:
+	sw		$t0, next_seed_location
+
+planting_and_watering_done:
+	lw		$ra, 0($sp)
+	lw		$s0, 4($sp)		#curr bot tile
+	lw		$s1, 8($sp)
+	add		$sp, $sp, 12
+	#reset timer_cause to 0
+	sw		$zero, timer_cause
+	j		do_puzzle
+
+# -----------------------------------------------------------------------
 # move_to - Given dest_tile_number...
 #			-calculate the angle we need to start moving, and change the bot's abs velocity to it
 #			-calculate the number of cycles(c) it'll take to get there with VELOCITY=10
 #			-set the TIMER_INTERRUPT to happen after (c) cycles, so main will know when to stop
-# $a0 - destination tile number (0-99)
+# $a0 - dest x
+# $a1 - dest y
 # returns nothing
 # -----------------------------------------------------------------------
 move_to:
@@ -213,7 +382,8 @@ move_to:
 	#G0!
 	li		$t9, 10
 	sw		$t9, VELOCITY
-	li		currently_moving_flag, 1	#raise moving flag
+	li		$t1, 1
+	sw		$t1, currently_moving_flag	#raise moving flag
 
 	#request timer interrupt
 	lw		$t1, TIMER		#get current cycle
@@ -368,6 +538,9 @@ interrupt_dispatch:			# Interrupt:
 	and	$a0, $k0, TIMER_MASK	# is there a timer interrupt?
 	bne	$a0, 0, timer_interrupt
 
+	and $a0, $k0, MAX_GROWTH_INT_MASK
+	bne $a0, $k0, max_growth_interrupt
+
 	# add dispatch for other interrupt types here.
 
 	li	$v0, PRINT_STRING	# Unhandled interrupt types
@@ -379,9 +552,19 @@ timer_interrupt:
 	sw	$a1, TIMER_ACK	#acknowledge timer interrupt
 	#STOP BOT. We've reached our desired location
 	sw	$zero, VELOCITY
-	li	currently_moving_flag	#lower moving flag
+	li	$a1, 0
+	sw	$a1, currently_moving_flag	#lower moving flag
+	#update timer_cause
+	lw	$a1, timer_cause
+	add	$a1, $a1, -4		#subtract 4 to get the cause of timer interrupt i.e. 7->3
+	sw	$a1, timer_cause
+
 	j	interrupt_dispatch
 
+max_growth_interrupt:
+	lw	$a1, MAX_GROWTH_TILE
+	sw	$a1, max_growth_location	#store location of crop
+	j	interrupt_dispatch
 
 non_intrpt:				# was some non-interrupt
 	li	$v0, PRINT_STRING
