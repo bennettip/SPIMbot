@@ -1,0 +1,12 @@
+Optimization/strategy:
+In order to reduce the time waiting for puzzles, we implemented a queue of puzzles (up to five puzzles). When less than five puzzles are in queue, the code will request more puzzles. This way, we keep track of the order of puzzles to solve.
+
+We also implemented queues for fires and harvestable plants respectively. This allows us to handle multiple interrupts in queue.
+
+The bot also solves puzzles in between actions (while walking) to save time.
+
+We chose to plant in an alternating fashion in order to reduce the risk of fires, and decided that the additional cost of walking between the plants were negligible.
+
+Our move to function uses the trigonometric library provided in order to move to the location in a more direct manner, thus saving time as well.
+
+The bot is primarily passive, and will only set fires to the enemy's crops if they happens to be in the way. This reduces the time needed to constantly check the location of their crops in order to set fire to them.
