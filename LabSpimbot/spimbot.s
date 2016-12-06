@@ -103,12 +103,18 @@ main:
 main_after_init:
 
 	#note only one thing
+	li	$t0, 1
+	sw	$t0, VELOCITY
 	lw	$t3, 0($s3)
 	lw	$t4, 0($s4)
 	beq	$t3, 0, request_1		#if i have not requested anything, request puzzle_1
 
 	beq	$t4, 1, request_2_before_solving_1		#if i have puzzle 1, solve it
 	beq	$t4, 2, request_1_before_solving_2		#if i have puzzle 2, solve it
+
+
+	li	$t0, -1
+	sw	$t0, VELOCITY
 
 	j	main_after_init			#loop if i already requested for puzzles but I haven't received anything yet
 
@@ -253,7 +259,7 @@ puzzle_interrupt:
 	beq	$k0, 1, set_received_1	#if i requested puzzle 1
 	la	$k0, received_flag
 	lw	$v0, 0($k0)		#value of received_flag
-	beq	$k0, 1, set_to_3	#otherwise i have puzzle 2. if i already have puzzle 1
+	beq	$v0, 1, set_to_3	#otherwise i have puzzle 2. if i already have puzzle 1
 	li	$v0, 2			#otherwise, i only have puzzle 2
 	sw	$v0, 0($k0)
 
