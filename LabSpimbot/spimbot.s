@@ -1,3 +1,7 @@
+# DEFINE
+WATER_PER_TILE = 20
+FIRE_STARTERS_WEIGHT = 500
+
 # syscall constants
 PRINT_STRING = 4
 PRINT_CHAR   = 11
@@ -67,6 +71,7 @@ next_seed_location:			.space 4	# stores the next location to plant(0-99)
 timer_cause:				.space 4	# 0-nothing,
                                         # interrupt happened: 1-fire, 2-harvest, 3-seed planting, 4-watering
                                         # waiting for interrupt: 5-fire, 6-harvest, 7-seed planting, 8-watering
+defensiveness: .space	4
 
 # TODO: Still need data structures for tile array, puzzles
 # for tile array
@@ -106,6 +111,10 @@ main:   # This part used to initialize values
 	sw	$t0, 0($t3)	#flag. 0 = nothing requested; 1 = 1 requested; 2 = 2 requested
 	sw	$t0, 0($t4)	#flag. 0 = nothing received; 1 = 1 received only; 2 = 2 received only; 3 = both received
 
+	la	$t3, defensiveness
+	li	$t4, 200000000
+	sw	$t4, 0($t3)
+
     la  $t0, fire_locations
     li  $t1, -1
     sw  $t1, 0($t0)
@@ -131,12 +140,18 @@ main:   # This part used to initialize values
     sw		$v0, next_seed_location	#curr bot tile
 
 new_main:
+	la	$t0, defensiveness
+	lw	$t1, 0($t0)
+	sub	$t1, $t1, 1
+	sw	$t1, 0($t0)
+
 	la	$t0, timer_cause
 	lw	$t0, 0($t0)
 	beq	$t0, 0, check_for_fire		#not moving or doing anything, check for fire
 	beq	$t0, 1, reached_fire		#i can put out fire now
 	beq	$t0, 2, reached_harvest		#i can harvest now
     beq $t0, 3, plant_and_water     #i can plant/water now
+	beq	$t0, 4,	set_fire			#i can set fire to current tile now
 	j	solve_puzzle_start
 
 check_for_fire:
@@ -162,6 +177,14 @@ check_for_fire:
 	li	$t0, 5			#timer will be caused by fire
 	sw	$t0, timer_cause
 	j	solve_puzzle_start
+
+set_fire:
+	#sets fire to current tile
+	sw	$zero, BURN_TILE
+	#reset timer_cause
+	sw	$zero, timer_cause
+	j new_main_end
+
 
 reached_fire:
 	sw	$a0, PUT_OUT_FIRE
@@ -317,7 +340,7 @@ set_resource:
     lw  $t1, GET_NUM_SEEDS
     mul $t1, $t1, 10
     lw  $t2, GET_NUM_FIRE_STARTERS
-    mul $t2, $t2, 100
+    mul $t2, $t2, FIRE_STARTERS_WEIGHT
 
     ble $t1, $t0, seeds_le_water
     bgt $t0, $t2, least_fire_starters   # water < seeds. if (water <= fire_starters)
@@ -489,7 +512,17 @@ check_side_tiles:
 	mul		$t1, $t1, 16		#offset of up tile
 	add		$t1, $t1, $s1		#tile of uptile
 	lw		$t2, 0($t1)			#load state of up tile
-	bne		$t2, $zero, planting_and_watering_done
+	beq		$t2, $zero, check_right_tile
+	#if state != 0, check if its enemy's , if so set fire to it
+	lw		$t2, 4($t1)
+	beq		$t2, $zero, done_checking_neighbor_tiles
+	#if not ours
+	move	$a0, $t1
+	li		$t6, 8		#<--indicated we're going to set a fire to a tile
+	sw		$t6, timer_cause
+	jal		move_to
+	j		update_next_seed_location	#update next seed location
+
 check_right_tile:#get right tile
 	add		$t1, $s0, 1		#get right tilenum
 	li		$t2, 270
@@ -498,7 +531,17 @@ check_right_tile:#get right tile
 	mul		$t1, $t1, 16		#offset of right tile
 	add		$t1, $t1, $s1		#tile of right tile
 	lw		$t2, 0($t1)
-	bne		$t2, $zero, planting_and_watering_done
+	beq		$t2, $zero, check_down_tile
+	#if state != 0, check if its enemy's , if so set fire to it
+	lw		$t2, 4($t1)
+	beq		$t2, $zero, done_checking_neighbor_tiles
+	#if not ours
+	move	$a0, $t1
+	li		$t6, 8		#<--indicated we're going to set a fire to a tile
+	sw		$t6, timer_cause
+	jal		move_to
+	j		update_next_seed_location	#update next seed location
+
 check_down_tile:	#get down tile
 	add		$t1, $s0, 10		#get down tilenum
 	li		$t2, 99
@@ -506,7 +549,17 @@ check_down_tile:	#get down tile
 	mul		$t1, $t1, 16		#offset of down tile
 	add		$t1, $t1, $s1		#tile of downtile
 	lw		$t2, 0($t1)
-	bne		$t2, $zero, planting_and_watering_done
+	beq		$t2, $zero, check_left_tile
+	#if state != 0, check if its enemy's , if so set fire to it
+	lw		$t2, 4($t1)
+	beq		$t2, $zero, done_checking_neighbor_tiles
+	#if not ours
+	move	$a0, $t1
+	li		$t6, 8		#<--indicated we're going to set a fire to a tile
+	sw		$t6, timer_cause
+	jal		move_to
+	j		update_next_seed_location	#update next seed location
+
 check_left_tile:	#get left tile
 	add		$t1, $s0, -1		#get left tilenum
 	li		$t2, 29
@@ -515,7 +568,16 @@ check_left_tile:	#get left tile
 	mul		$t1, $t1, 16		#offset of left tile
 	add		$t1, $t1, $s1		#tile of lefttile
 	lw		$t2, 0($t1)
-	bne		$t2, $zero, planting_and_watering_done
+	beq		$t2, $zero, done_checking_neighbor_tiles
+	#if state != 0, check if its enemy's , if so set fire to it
+	lw		$t2, 4($t1)
+	beq		$t2, $zero, done_checking_neighbor_tiles
+	#if not ours
+	move	$a0, $t1
+	li		$t6, 8		#<--indicated we're going to set a fire to a tile
+	sw		$t6, timer_cause
+	jal		move_to
+	j		update_next_seed_location	#update next seed location
 
 done_checking_neighbor_tiles:
 	#WE'RE CLEAR TO PLANT AND WATER at current location!
@@ -525,7 +587,7 @@ water_curr_tile:
 
 	ble		$t0, $zero, update_next_seed_location
 	#if we can water...
-	li		$t1, 10				#water here
+	li		$t1, WATER_PER_TILE				#water here
 	sw		$t1, WATER_TILE
 
 
@@ -545,9 +607,16 @@ currently_not_at_last_tile:
 	div		$t0, $t5
 	mflo	$t6			#curr next_seed_location/10
 	add		$t1, $t0, $zero	#curr next_seed_location
+	la		$t9, defensiveness
+	lw		$t9, 0($t9)
+	bge		$t9, 200000001, be_defensive
+	add		$t0, $t0, 1
+	j		currently_not_at_last_tile_cont
 
+be_defensive:
 	add		$t0, $t0, 2	#increment next_seed_location
 
+currently_not_at_last_tile_cont:
 	div		$t0, $t5
 	mflo	$t7			#new next_seed_location/10
 	add		$t2, $t0, $zero	#new next_seed_location
@@ -578,8 +647,13 @@ planting_and_watering_done:
 	lw		$s0, 4($sp)		#curr bot tile
 	lw		$s1, 8($sp)
 	add		$sp, $sp, 12
-	#reset timer_cause to 0
+
+	lw		$t0, timer_cause
+	li		$t1, 8
+	beq		$t0, $t1, planting_updated_timer_cause
+	#reset timer_cause to 0 only if we don't need to burn anything
 	sw		$zero, timer_cause
+planting_updated_timer_cause:
 	j		new_main
 
 # -----------------------------------------------------------------------
@@ -1314,6 +1388,10 @@ interrupt_dispatch:                             # Interrupt:
 
 on_fire_interrupt:
     sw  $0, ON_FIRE_ACK     # acknowledge interrupt
+	la	$a0, defensiveness
+	lw	$a1, 0($a0)
+	add	$a1, $a1, 10000
+	sw	$a1, 0($a0)
 	sw	$a0, ON_FIRE_ACK	# acknowledge interrupt
 
 	la	$a0, fire_locations
@@ -1349,8 +1427,12 @@ timer_interrupt:
 	sw	$a1, currently_moving_flag  #lower moving flag
 	#update timer_cause
 	lw	$a1, timer_cause
+	beq	$a1, 0, do_not_subtract
 	add	$a1, $a1, -4                #subtract 4 to get the cause of timer interrupt i.e. 7->3
 	sw	$a1, timer_cause
+	j	interrupt_dispatch
+
+do_not_subtract:
 	j	interrupt_dispatch
 
 puzzle_interrupt:
@@ -1411,5 +1493,6 @@ done:
 	move	$at, $k1    # Restore $at
 	.set at
 	eret
+
 
 
