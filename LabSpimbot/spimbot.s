@@ -1,6 +1,12 @@
 # DEFINE
-WATER_PER_TILE = 20
-FIRE_STARTERS_WEIGHT = 500
+WATER_PER_TILE =        30
+
+SEEDS_WEIGHT =          10
+FIRE_STARTERS_WEIGHT =  700
+
+MAX_WATER =             500
+MAX_SEEDS =             30
+MAX_FIRE_STARTERS =     2
 
 # syscall constants
 PRINT_STRING = 4
@@ -141,6 +147,7 @@ new_main:
 	beq	$t0, 1, reached_fire		#i can put out fire now
 	beq	$t0, 2, reached_harvest		#i can harvest now
     beq $t0, 3, plant_and_water     #i can plant/water now
+
 	j	solve_puzzle_start
 
 check_for_fire:
@@ -276,6 +283,15 @@ start_greater_than_end:
 	jr	$ra
 
 solve_puzzle_start:
+    # new_main
+    lw  $t0, GET_NUM_FIRE_STARTERS
+    blt $t0, MAX_FIRE_STARTERS, real_start
+    lw  $t0, GET_NUM_SEEDS
+    blt $t0, MAX_SEEDS, real_start
+    lw  $t0, GET_NUM_WATER_DROPS
+    blt $t0, MAX_WATER, real_start
+    j   new_main
+real_start:
 	sub	$sp, $sp, 24
 	sw	$ra, 0($sp)	
 	sw	$s0, 4($sp)	
@@ -319,7 +335,7 @@ solve_received_puzzle:
 set_resource:
     lw  $t0, GET_NUM_WATER_DROPS
     lw  $t1, GET_NUM_SEEDS
-    mul $t1, $t1, 10
+    mul $t1, $t1, SEEDS_WEIGHT
     lw  $t2, GET_NUM_FIRE_STARTERS
     mul $t2, $t2, FIRE_STARTERS_WEIGHT
 
@@ -493,7 +509,7 @@ check_side_tiles:
 	mul		$t1, $t1, 16		#offset of up tile
 	add		$t1, $t1, $s1		#tile of uptile
 	lw		$t2, 0($t1)			#load state of up tile
-	bne		$t2, $zero, planting_and_watering_done
+	bne		$t2, $zero, update_next_seed_location
 check_right_tile:#get right tile
 	add		$t1, $s0, 1		#get right tilenum
 	li		$t2, 270
@@ -502,7 +518,7 @@ check_right_tile:#get right tile
 	mul		$t1, $t1, 16		#offset of right tile
 	add		$t1, $t1, $s1		#tile of right tile
 	lw		$t2, 0($t1)
-	bne		$t2, $zero, planting_and_watering_done
+	bne		$t2, $zero, update_next_seed_location
 check_down_tile:	#get down tile
 	add		$t1, $s0, 10		#get down tilenum
 	li		$t2, 99
@@ -510,7 +526,7 @@ check_down_tile:	#get down tile
 	mul		$t1, $t1, 16		#offset of down tile
 	add		$t1, $t1, $s1		#tile of downtile
 	lw		$t2, 0($t1)
-	bne		$t2, $zero, planting_and_watering_done
+	bne		$t2, $zero, update_next_seed_location
 check_left_tile:	#get left tile
 	add		$t1, $s0, -1		#get left tilenum
 	li		$t2, 29
@@ -519,7 +535,7 @@ check_left_tile:	#get left tile
 	mul		$t1, $t1, 16		#offset of left tile
 	add		$t1, $t1, $s1		#tile of lefttile
 	lw		$t2, 0($t1)
-	bne		$t2, $zero, planting_and_watering_done
+	bne		$t2, $zero, update_next_seed_location
 
 done_checking_neighbor_tiles:
 	#WE'RE CLEAR TO PLANT AND WATER at current location!
