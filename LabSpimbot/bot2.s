@@ -50,27 +50,27 @@ REQUEST_PUZZLE_INT_MASK = 0x800
 .data
 # data things go here
 #interrupt flags
-fire_flag:			.space 4	# 32 bit, 1 or 0
-max_growth_flag:    .space 4	# 32 bit, 1 or 0
-puzzle_flag:		.space 4	# 32 bit, 1 or 0
+fire_flag:			.space 4	#32 bit, 1 or 0
+max_growth_flag:    .space 4	#32 bit, 1 or 0
+puzzle_flag:		.space 4	#32 bit, 1 or 0
 
-# for the trig functions
+#for the trig functions
 three:	.float	3.0
 five:	.float	5.0
 PI:     .float	3.141592
 F180:	.float  180.0
 
-# misc use
+#misc use
 currently_moving_flag:  .space 4	#32 bit, 1 or 0
 
 fireX:  .word 0
 fireY:  .word 0
 
-# TODO: Still need data structures for tile array, puzzles
+#TODO: Still need data structures for tile array, puzzles
 
 .text
-main: # This part used to initialize values
-	# initialize interrupt flags
+main: #This part used to initialize values
+	#initialize interrupt flags
 	li		fire_flag, 0
 	li		max_growth_flag, 0
 	li		currently_moving_flag, 0
@@ -84,67 +84,10 @@ main: # This part used to initialize values
 	or		$t4, $t4, 1			#global interrupt enable
 	mtc0	$t4, $12		#set interrupt mask (Status register)
 
-main_loop:
-	bne		currently_moving_flag, $zero, bot_currently_moving
-	# If bot stopped, then we can proceed to do these tasks
-
-	# If our current tile is on fire, put it out! might reach here after moving to a fire tile
-
-	# If our current tile has a grown crop, harvest! might reach here after moving to a grown tile
-
-	#Here, we can assume that any puzzles worked on while moving have been finished right?
-	#	-if we get to the desired tile before we finish the puzzle, we'd get interrupted/stopped, then continue solving it right?
-
-checked_for_fire:
-    beq fire_flag, $zero, checked_if_needed_puzzles # not checked_fire?
-	# THIS FUNCTION SHOULDN'T PUT OUT THE FIRE; this should j to bot_currently_moving after we start moving towards fire
-    lw  $a0, fireX
-    lw  $t0, fireY
-    mul $t0, $t0, 10
-    add $a0, $a0, $t0                               # a0 = tileNum
-    # helper function
-    jal move_to
-    j   bot_currently_moving                        # ?
-
-checked_if_needed_puzzles:
-	# Check if we need to request puzzles <-- here in priority because puzzles take time to arrive
-	# Ordered by priority (Can we request more than one puzzle at once?)
-	# 0 - water - If we have below the water needed to put out 3 fires
-	# 1 - seeds - If we have below the seed threshold
-	# 2 - fire starters
-
-checked_for_grown_crop:
-	# Check for fully grown crop
-	beq		max_growth_flag, $zero, checked_for_grown_crop
-	# THIS FUNCTION SHOULDN'T HARVEST; this should j to bot_currently_moving after we start moving towards grown crop
-	jal		(go_to_grown_crop_function)
-
-	# P lanting algorithm
-#		-At first, plant in a spiral/circle pattern such that fire can't spread among crops
-#		-If enemy not aggressive, switch to a method that takes advantage of water spread. (if we have time?)
-
-	# Watering algorithm
-
-	j		main_loop
-
-bot_currently_moving:
-	# Check if there's a puzzle available to solve
-	bne	puzzle_flag, $zero, (solve_puzzle_function)
-
-
-
-	# This snippet of code used to test moving--------------------------------
-	#   li		$a0, 12	#bot will move to tile at index 12 in the tile array
-	#	jal		move_to
-	# useless_loop:
-	#	j		useless_loop
-	# -------------------------------------------------------------------------
-
-	j		main_loop
-    # End of main_loop
+# sth
 
     j	main
-    # End of main
+    #End of main
 
 #HELPER FUNCTIONS---------------------------------------------------------------
 
@@ -168,79 +111,79 @@ move_to:
 	sw		$s6, 28($sp)	#angle returned by arctan
 	sw		$a0, 32($sp)	#dest_tile_number
 
-	# STOP MOVING FIRST
+	#STOP MOVING FIRST
 	sw		$zero, VELOCITY
 
-	# FIND DEST X-COORDINATE
+	#FIND DEST X-COORDINATE
 	jal		calc_tile_x
-	move	$s0, $v0		# dest x-coordinate
-	# restore
+	move	$s0, $v0		#dest x-coordinate
+	#restore
 	lw		$ra, 0($sp)
 	lw		$a0, 32($sp)
-	# CALCULATE THE X DIFFERENCE
-	li		$s2, BOT_X		# get botx
+	#CALCULATE THE X DIFFERENCE
+	li		$s2, BOT_X		#get botx
 	lw		$s2, 0($s2)
-	sub		$s4, $s0, $s2	# x_diff = destx - botx
+	sub		$s4, $s0, $s2	#x_diff = destx - botx
 
 
-	# FIND DEST Y-COORDINATE
+	#FIND DEST Y-COORDINATE
 	jal		calc_tile_y
-	move	$s1, $v0		# dest y-coordinate
-	# restore
+	move	$s1, $v0		#dest y-coordinate
+	#restore
 	lw		$ra, 0($sp)
 	lw		$a0, 32($sp)
-	# CALCULATE THE Y DIFFERENCE
-	li		$s3, BOT_Y		# get boty
+	#CALCULATE THE Y DIFFERENCE
+	li		$s3, BOT_Y		#get boty
 	lw		$s3, 0($s3)
-	sub		$s5, $s1, $s3	# y_diff = desty - boty
+	sub		$s5, $s1, $s3	#y_diff = desty - boty
 
-	# CALCULATE THE ARCTAN OF X_DIFF, Y_DIFF
-	move	$a0, $s4		# x_diff
-	move	$a1, $s5		# y_diff
+	#CALCULATE THE ARCTAN OF X_DIFF, Y_DIFF
+	move	$a0, $s4		#x_diff
+	move	$a1, $s5		#y_diff
 	jal		sb_arctan
-	# restore
+	#restore
 	lw		$ra, 0($sp)
 	lw		$a0, 32($sp)
 
-	move	$s6, $v0		# angle returned by arctan
-	# turn the bot to the angle
+	move	$s6, $v0		#angle returned by arctan
+	#turn the bot to the angle
 	li		$t1, 1
 	sw		$s6, ANGLE
 	sw		$t1, ANGLE_CONTROL
 
-	# we are now facing directly to the tile we want to go to.
-	# calculate the euclidean dist
-	move	$a0, $s4		# x_diff
-	move	$a1, $s5		# y_diff
+	#we are now facing directly to the tile we want to go to.
+	#calculate the euclidean dist
+	move	$a0, $s4		#x_diff
+	move	$a1, $s5		#y_diff
 	jal		euclidean_dist
-	move	$t0, $v0		# hypotenuse dist
-	# restore
+	move	$t0, $v0		#hypotenuse dist
+	#restore
 	lw		$ra, 0($sp)
 	lw		$a0, 32($sp)
-	# calculate the cycles needed to get to the dest tile
-	mul		$t2, $t0, 1000	# multiply dist by 1000 so its more precise = number of cycles before timer interrupt
+	#calculate the cycles needed to get to the dest tile
+	mul		$t2, $t0, 1000	#multiply dist by 1000 so its more precise = number of cycles before timer interrupt
 
-	# G0!
+	#G0!
 	li		$t9, 10
 	sw		$t9, VELOCITY
-	li		currently_moving_flag, 1	# raise moving flag
+	li		currently_moving_flag, 1	#raise moving flag
 
-	# request timer interrupt
-	lw		$t1, TIMER		# get current cycle
+	#request timer interrupt
+	lw		$t1, TIMER		#get current cycle
 	add		$t1, $t1, $t2
-	sw		$t1, TIMER		# request timer interrupt at cycle = $t1
+	sw		$t1, TIMER		#request timer interrupt at cycle = $t1
 
 move_to_done:
-	# restore all saved registers
+	#restore all saved registers
 	lw		$ra, 0($sp)
-	lw		$s0, 4($sp)		# destx
-	lw		$s1, 8($sp)		# desty
-	lw		$s2, 12($sp)	# botx
-	lw		$s3, 16($sp)	# boty
-	lw		$s4, 20($sp)	# x_diff
-	lw		$s5, 24($sp)	# y_diff
-	lw		$s6, 28($sp)	# angle returned by arctan
-	lw		$a0, 32($sp)	# dest_tile_number
+	lw		$s0, 4($sp)		#destx
+	lw		$s1, 8($sp)		#desty
+	lw		$s2, 12($sp)	#botx
+	lw		$s3, 16($sp)	#boty
+	lw		$s4, 20($sp)	#x_diff
+	lw		$s5, 24($sp)	#y_diff
+	lw		$s6, 28($sp)	#angle returned by arctan
+	lw		$a0, 32($sp)	#dest_tile_number
 	add		$sp, $sp, 36
 	jr		$ra
 
@@ -283,17 +226,17 @@ calc_tile_y:
 # returns the arctangent
 # -----------------------------------------------------------------------
 sb_arctan:
-	li	$v0, 0          # angle = 0;
+	li	$v0, 0		# angle = 0;
 
-	abs	$t0, $a0        # get absolute values
+	abs	$t0, $a0	# get absolute values
 	abs	$t1, $a1
 	ble	$t1, $t0, no_TURN_90
 
 	## if (abs(y) > abs(x)) { rotate 90 degrees }
 	move	$t0, $a1	# int temp = y;
-	neg	$a1, $a0        # y = -x;
-	move	$a0, $t0    # x = temp;
-	li	$v0, 90         # angle = 90;
+	neg	$a1, $a0	# y = -x;
+	move	$a0, $t0	# x = temp;
+	li	$v0, 90		# angle = 90;
 
 no_TURN_90:
 	bgez	$a0, pos_x 	# skip if (x >= 0)
@@ -304,30 +247,30 @@ no_TURN_90:
 pos_x:
 	mtc1	$a0, $f0
 	mtc1	$a1, $f1
-	cvt.s.w $f0, $f0        # convert from ints to floats
+	cvt.s.w $f0, $f0	# convert from ints to floats
 	cvt.s.w $f1, $f1
 
 	div.s	$f0, $f1, $f0	# float v = (float) y / (float) x;
 
 	mul.s	$f1, $f0, $f0	# v^^2
 	mul.s	$f2, $f1, $f0	# v^^3
-	l.s	$f3, three          # load 5.0
+	l.s	$f3, three	# load 5.0
 	div.s 	$f3, $f2, $f3	# v^^3/3
 	sub.s	$f6, $f0, $f3	# v - v^^3/3
 
 	mul.s	$f4, $f1, $f2	# v^^5
-	l.s	$f5, five           # load 3.0
+	l.s	$f5, five	# load 3.0
 	div.s 	$f5, $f4, $f5	# v^^5/5
 	add.s	$f6, $f6, $f5	# value = v - v^^3/3 + v^^5/5
 
-	l.s	$f8, PI             # load PI
+	l.s	$f8, PI		# load PI
 	div.s	$f6, $f6, $f8	# value / PI
-	l.s	$f7, F180           # load 180.0
+	l.s	$f7, F180	# load 180.0
 	mul.s	$f6, $f6, $f7	# 180.0 * value / PI
 
-	cvt.w.s $f6, $f6        # convert "delta" back to integer
+	cvt.w.s $f6, $f6	# convert "delta" back to integer
 	mfc1	$t0, $f6
-	add	$v0, $v0, $t0       # angle += delta
+	add	$v0, $v0, $t0	# angle += delta
 
 	jr 	$ra
 
@@ -409,7 +352,7 @@ timer_interrupt:
 	li	currently_moving_flag   # lower moving flag
 	j	interrupt_dispatch
 
-# some_interrupt: # template
+#some_interrupt: # template
 #    sw  $0, SOME_ACK
 #    # code
 #    j   interrupt_dispatch
