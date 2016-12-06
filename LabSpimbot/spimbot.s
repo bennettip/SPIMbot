@@ -141,6 +141,7 @@ new_main:
 	beq	$t0, 1, reached_fire		#i can put out fire now
 	beq	$t0, 2, reached_harvest		#i can harvest now
     beq $t0, 3, plant_and_water     #i can plant/water now
+	beq	$t0, 4,	set_fire			#i can set fire to current tile now
 	j	solve_puzzle_start
 
 check_for_fire:
@@ -166,6 +167,14 @@ check_for_fire:
 	li	$t0, 5			#timer will be caused by fire
 	sw	$t0, timer_cause
 	j	solve_puzzle_start
+
+set_fire:
+	#sets fire to current tile
+	sw	$zero, BURN_TILE
+	#reset timer_cause
+	sw	$zero, timer_cause
+	j new_main_end
+
 
 reached_fire:
 	sw	$a0, PUT_OUT_FIRE
@@ -493,7 +502,17 @@ check_side_tiles:
 	mul		$t1, $t1, 16		#offset of up tile
 	add		$t1, $t1, $s1		#tile of uptile
 	lw		$t2, 0($t1)			#load state of up tile
-	bne		$t2, $zero, update_next_seed_location
+	beq		$t2, $zero, check_right_tile
+	#if state != 0, check if its enemy's , if so set fire to it
+	lw		$t2, 4($t1)
+	beq		$t2, $zero, update_next_seed_location
+	#if not ours
+	move	$a0, $t1
+	li		$t6, 8		#<--indicated we're going to set a fire to a tile
+	sw		$t6, timer_cause
+	jal		move_to
+	j		update_next_seed_location	#update next seed location
+
 check_right_tile:#get right tile
 	add		$t1, $s0, 1		#get right tilenum
 	li		$t2, 270
@@ -502,7 +521,17 @@ check_right_tile:#get right tile
 	mul		$t1, $t1, 16		#offset of right tile
 	add		$t1, $t1, $s1		#tile of right tile
 	lw		$t2, 0($t1)
-	bne		$t2, $zero, update_next_seed_location
+	beq		$t2, $zero, check_down_tile
+	#if state != 0, check if its enemy's , if so set fire to it
+	lw		$t2, 4($t1)
+	beq		$t2, $zero, update_next_seed_location
+	#if not ours
+	move	$a0, $t1
+	li		$t6, 8		#<--indicated we're going to set a fire to a tile
+	sw		$t6, timer_cause
+	jal		move_to
+	j		update_next_seed_location	#update next seed location
+
 check_down_tile:	#get down tile
 	add		$t1, $s0, 10		#get down tilenum
 	li		$t2, 99
@@ -510,7 +539,17 @@ check_down_tile:	#get down tile
 	mul		$t1, $t1, 16		#offset of down tile
 	add		$t1, $t1, $s1		#tile of downtile
 	lw		$t2, 0($t1)
-	bne		$t2, $zero, update_next_seed_location
+	beq		$t2, $zero, check_left_tile
+	#if state != 0, check if its enemy's , if so set fire to it
+	lw		$t2, 4($t1)
+	beq		$t2, $zero, update_next_seed_location
+	#if not ours
+	move	$a0, $t1
+	li		$t6, 8		#<--indicated we're going to set a fire to a tile
+	sw		$t6, timer_cause
+	jal		move_to
+	j		update_next_seed_location	#update next seed location
+
 check_left_tile:	#get left tile
 	add		$t1, $s0, -1		#get left tilenum
 	li		$t2, 29
@@ -519,7 +558,16 @@ check_left_tile:	#get left tile
 	mul		$t1, $t1, 16		#offset of left tile
 	add		$t1, $t1, $s1		#tile of lefttile
 	lw		$t2, 0($t1)
-	bne		$t2, $zero, update_next_seed_location
+	beq		$t2, $zero, done_checking_neighbor_tiles
+	#if state != 0, check if its enemy's , if so set fire to it
+	lw		$t2, 4($t1)
+	beq		$t2, $zero, update_next_seed_location
+	#if not ours
+	move	$a0, $t1
+	li		$t6, 8		#<--indicated we're going to set a fire to a tile
+	sw		$t6, timer_cause
+	jal		move_to
+	j		update_next_seed_location	#update next seed location
 
 done_checking_neighbor_tiles:
 	#WE'RE CLEAR TO PLANT AND WATER at current location!
@@ -582,8 +630,13 @@ planting_and_watering_done:
 	lw		$s0, 4($sp)		#curr bot tile
 	lw		$s1, 8($sp)
 	add		$sp, $sp, 12
-	#reset timer_cause to 0
+
+	lw		$t0, timer_cause
+	li		$t1, 8
+	beq		$t0, $t1, planting_updated_timer_cause
+	#reset timer_cause to 0 only if we don't need to burn anything
 	sw		$zero, timer_cause
+planting_updated_timer_cause:
 	j		new_main
 
 # -----------------------------------------------------------------------
