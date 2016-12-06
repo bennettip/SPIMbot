@@ -97,7 +97,7 @@ main:
 	li	$t0, 0	# 0 for water, 1 for seeds, 2 for fire starters [to change next time]
 	sw	$t0, SET_RESOURCE_TYPE
 
-	li	$t0, 1
+	li	$t0, 0
 	sw	$t0, VELOCITY
 
 main_after_init:
