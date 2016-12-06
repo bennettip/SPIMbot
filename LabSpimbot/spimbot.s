@@ -1,3 +1,7 @@
+# DEFINE
+WATER_PER_TILE = 20
+FIRE_STARTERS_WEIGHT = 500
+
 # syscall constants
 PRINT_STRING = 4
 PRINT_CHAR   = 11
@@ -317,7 +321,7 @@ set_resource:
     lw  $t1, GET_NUM_SEEDS
     mul $t1, $t1, 10
     lw  $t2, GET_NUM_FIRE_STARTERS
-    mul $t2, $t2, 100
+    mul $t2, $t2, FIRE_STARTERS_WEIGHT
 
     ble $t1, $t0, seeds_le_water
     bgt $t0, $t2, least_fire_starters   # water < seeds. if (water <= fire_starters)
@@ -525,7 +529,7 @@ water_curr_tile:
 
 	ble		$t0, $zero, update_next_seed_location
 	#if we can water...
-	li		$t1, 10				#water here
+	li		$t1, WATER_PER_TILE				#water here
 	sw		$t1, WATER_TILE
 
 
