@@ -62,14 +62,11 @@ PI:     .float	3.141592
 F180:	.float  180.0
 
 # misc use
-currently_moving_flag:		.space 4	#32 bit, 1 or 0
-next_seed_location:			.space 4	#stores the next location to plant(0-99)
-timer_cause:				.space 4	#0-nothing,
-# interrupt happened: 1-fire, 2-harvest, 3-seed planting, 4-watering
-# waiting for interrupt: 5-fire, 6-harvest, 7-seed planting, 8-watering
-
-fireX:  .word 0
-fireY:  .word 0
+currently_moving_flag:		.space 4	# 32 bit, 1 or 0
+next_seed_location:			.space 4	# stores the next location to plant(0-99)
+timer_cause:				.space 4	# 0-nothing,
+                                        # interrupt happened: 1-fire, 2-harvest, 3-seed planting, 4-watering
+                                        # waiting for interrupt: 5-fire, 6-harvest, 7-seed planting, 8-watering
 
 # TODO: Still need data structures for tile array, puzzles
 # for tile array
@@ -86,8 +83,8 @@ harvest_locations:  .space  4008
 tile_data:          .space  1600
 
 .text
-main: # This part used to initialize values
-	# initialize interrupt flags
+main:   # This part used to initialize values
+        # initialize interrupt flags
 	sw      $0, fire_flag
 	sw      $0, max_growth_flag
 	sw      $0, currently_moving_flag
@@ -125,12 +122,21 @@ main: # This part used to initialize values
 	sw	$t0, 0($t3)
 	sw	$t0, 0($t4)
 
+    #initialize next_seed_location
+    lw		$t0, BOT_X	#x-coordinate(0-300)
+    lw		$t1, BOT_Y	#y-coordinate(0-300)
+    move	$a0, $t0
+    move	$a1, $t1
+    jal		xy_coordinate_to_tilenum
+    sw		$v0, next_seed_location	#curr bot tile
+
 new_main:
 	la	$t0, timer_cause
 	lw	$t0, 0($t0)
 	beq	$t0, 0, check_for_fire		#not moving or doing anything, check for fire
 	beq	$t0, 1, reached_fire		#i can put out fire now
 	beq	$t0, 2, reached_harvest		#i can harvest now
+    beq $t0, 3, plant_and_water     #i can plant/water now
 	j	solve_puzzle_start
 
 check_for_fire:
@@ -183,7 +189,7 @@ no_more_fires:
 check_for_harvest:
 	la	$t0, harvest_locations
 	lw	$t1, 0($t0)		#value of start
-	beq	$t1, -1, solve_puzzle_start	#loop if no harvest
+	beq	$t1, -1, go_to_next_seed_location
 
 	mul	$t2, $t1, 4		#start location * 4
 	add	$t0, $t0, 8		#first element (location 0)
@@ -435,7 +441,7 @@ go_to_next_seed_location:
 
 	lw		$ra, 0($sp)
 	add		$sp, $sp, 4
-	j		do_puzzle
+	j		solve_puzzle_start
 
 
 # -----------------------------------------------------------------------
@@ -469,10 +475,10 @@ plant_and_water:
 	beq		$t2, $zero, check_side_tiles
 	#if this tile if full, check to see if we can set fire to this tile if it's our enemy's crops
 	lw		$t2, 4($t1)			#0 - ours, 1 - enemy
-	beq		$t2, $zero, planting_and_watering_done
+	beq		$t2, $zero, water_curr_tile	# <-- water this tile AND update next_seed_location!!
 	#if this tile is our enemy's
 	sw		$zero, BURN_TILE
-	j		planting_and_watering_done
+	j		update_next_seed_location # <-- set fire to this tile AND update next_seed_location!!
 
 check_side_tiles:
 	#check 4 sides to see if anything growing
@@ -514,19 +520,27 @@ check_left_tile:	#get left tile
 done_checking_neighbor_tiles:
 	#WE'RE CLEAR TO PLANT AND WATER at current location!
 	sw		$zero, SEED_TILE		#attempt to plant seed here
+water_curr_tile:
 	lw		$t0, GET_NUM_WATER_DROPS
 
-	ble		$t0, $zero, planted
+	ble		$t0, $zero, update_next_seed_location
 	#if we can water...
-	li		$t1, 2				#water here
+	li		$t1, 10				#water here
 	sw		$t1, WATER_TILE
 
 
 
-planted:
+update_next_seed_location:
 	#update next_seed_location
 	lw		$t0, next_seed_location
+	li		$t8, 99
+	bne		$t0, $t8, currently_not_at_last_tile
+	#if we are at tile 99...it wants to go to 0, BUT WE CANT >:0 so set it to 2, so the checkerboard pattern remains
+	li		$t8, 2
+	sw		$t8, next_seed_location
+	j		planting_and_watering_done
 
+currently_not_at_last_tile:
 	li		$t5, 10
 	div		$t0, $t5
 	mflo	$t6			#curr next_seed_location/10
@@ -566,7 +580,7 @@ planting_and_watering_done:
 	add		$sp, $sp, 12
 	#reset timer_cause to 0
 	sw		$zero, timer_cause
-	j		do_puzzle
+	j		new_main
 
 # -----------------------------------------------------------------------
 # move_to - Given dest_tile_number...
@@ -1287,7 +1301,7 @@ interrupt_dispatch:                             # Interrupt:
     bne     $a0, 0, puzzle_interrupt
 
     and     $a0, $k0, MAX_GROWTH_INT_MASK
-    bne     $a0, $k0, max_growth_interrupt
+    bne     $a0, 0, max_growth_interrupt
 
 	# add dispatch for other interrupt types here.
     #and     $a0, $k0, SOME_MASK
@@ -1372,7 +1386,7 @@ first_harvest:
 	li	$a1, 0
 	sw	$a1, 0($a0)
 	sw	$a1, 4($a0)		#start and end = 0
-	lw	$a1, MAX_GROWTH_TILE
+	lw	$v0, MAX_GROWTH_TILE
 	sw	$v0, 8($a0)
 
 	j	interrupt_dispatch	# see if other interrupts are waiting
@@ -1397,4 +1411,5 @@ done:
 	move	$at, $k1    # Restore $at
 	.set at
 	eret
+
 
