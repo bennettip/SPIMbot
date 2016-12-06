@@ -196,6 +196,10 @@ least_seeds:
 done_set_resource:
     sw  $t3, SET_RESOURCE_TYPE
 
+#BENNETT
+name:
+    sw  $t0, MAX_GROWTH_TILE    # the value in t0 doesn't matter
+
 
 
 
