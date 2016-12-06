@@ -1,3 +1,4 @@
+#DAN=======
 main_loop:
 	bne		currently_moving_flag, $zero, bot_currently_moving
 	# If bot stopped, then we can proceed to do these tasks
@@ -59,119 +60,41 @@ checked_for_grown_crop:
 
     j	main
     # End of main
+#DAN_2=====================
+	#initialize next_seed_location
+	lw		$t0, BOT_X	#x-coordinate(0-300)
+	lw		$t1, BOT_Y	#y-coordinate(0-300)
+	move	$a0, $t0
+	move	$a1, $t1
+	jal		xy_coordinate_to_tilenum
+	sw		$v0, next_seed_location	#curr bot tile
+
+	lw		$t0, GET_NUM_FIRE_STARTERS
+main_loop:
+	lw		$s0, timer_cause
 
 
+	bne		$zero, $s0, cont
+	#go to plant
+	jal		go_to_next_seed_location
+cont:
+	li		$t0, 3
+	bne		$t0, $s0, cont2
 
-main:
-main_after_init:
-
-	#note only one thing
-	li	$t0, 1
-	sw	$t0, VELOCITY
-	lw	$t3, 0($s3)
-	lw	$t4, 0($s4)
-	beq	$t3, 0, request_1		#if i have not requested anything, request puzzle_1
-
-	beq	$t4, 1, request_2_before_solving_1		#if i have puzzle 1, solve it
-	beq	$t4, 2, request_1_before_solving_2		#if i have puzzle 2, solve it
+	jal		plant_and_water
+cont2:
 
 
-	li	$t0, -1
-	sw	$t0, VELOCITY
+do_puzzle:
 
-	j	main_after_init			#loop if i already requested for puzzles but I haven't received anything yet
+	j		main_loop
+#End of main_loop
 
-request_1:
-	sw	$s1, REQUEST_PUZZLE		#request for puzzle 1
-	li	$t0, 1
-	sw	$t0, 0($s3)			#set flag to 'requested 1'
+j	main
+#End of main
+#=============
 
-	j	main_after_init
-
-request_1_before_solving_2:
-	sw	$s1, REQUEST_PUZZLE		#request for puzzle 1
-	li	$t0, 1
-	sw	$t0, 0($s3)			#set flag to 'requested 1'
-
-	j	before_puzzle_2
-
-request_2_before_solving_1:
-	sw	$s2, REQUEST_PUZZLE		#request for puzzle 2
-	li	$t0, 2
-	sw	$t0, 0($s3)			#set flag to 'requested 2'
-
-	j	before_puzzle_1
-
-before_puzzle_1:
-	j	zero_solution_1
-
-solve_puzzle_1:
-	move	$a0, $s0			#solution address
-	move	$a1, $s1			#puzzle 1 address
-	jal	recursive_backtracking
-	sw	$s0, SUBMIT_SOLUTION
-
-	lw	$t4, 0($s4)
-	beq	$t4, 3, set_3_to_2
-	li	$t4, 0
-	sw	$t4, 0($s4)
-
-	j	main_after_init
-
-set_3_to_2:
-	li	$t4, 2
-	sw	$t4, 0($s4)
-	j	main_after_init
-
-zero_solution_1:
-	li	$t0, 0
-	j	zero_solution_loop_1
-
-zero_solution_loop_1:
-	bge	$t0, 82, solve_puzzle_1
-	mul	$t1, $t0, 4
-	add	$t1, $t1, $s0
-	li	$t2, 0
-	sw	$t2, 0($t1)
-	add	$t0, $t0, 1
-	j	zero_solution_loop_1
-
-
-before_puzzle_2:
-	j	zero_solution_2
-
-zero_solution_2:
-	li	$t0, 0
-	j	zero_solution_loop_2
-
-zero_solution_loop_2:
-	bge	$t0, 82, solve_puzzle_2
-	mul	$t1, $t0, 4
-	add	$t1, $t1, $s0
-	li	$t2, 0
-	sw	$t2, 0($t1)
-	add	$t0, $t0, 1
-	j	zero_solution_loop_2
-
-solve_puzzle_2:
-	move	$a0, $s0			#solution address
-	move	$a1, $s2			#puzzle 2 address
-	jal	recursive_backtracking
-	sw	$s0, SUBMIT_SOLUTION
-
-	lw	$t4, 0($s4)
-	beq	$t4, 3, set_3_to_1
-	li	$t4, 0
-	sw	$t4, 0($s4)
-	j	main_after_init
-
-set_3_to_1:
-	li	$t4, 1
-	sw	$t4, 0($s4)
-	j	main_after_init	
-
-
-# BENNETT
+#BEN==========
 set_resource:
     lw  $t0, GET_NUM_WATER_DROPS
     lw  $t1, GET_NUM_SEEDS
@@ -195,22 +118,4 @@ least_seeds:
 
 done_set_resource:
     sw  $t3, SET_RESOURCE_TYPE
-
-#BENNETT
-name:
-    sw  $t0, MAX_GROWTH_TILE    # the value in t0 doesn't matter
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+#==============================
