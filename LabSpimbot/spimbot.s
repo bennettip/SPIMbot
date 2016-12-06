@@ -493,7 +493,7 @@ check_side_tiles:
 	mul		$t1, $t1, 16		#offset of up tile
 	add		$t1, $t1, $s1		#tile of uptile
 	lw		$t2, 0($t1)			#load state of up tile
-	bne		$t2, $zero, planting_and_watering_done
+	bne		$t2, $zero, update_next_seed_location
 check_right_tile:#get right tile
 	add		$t1, $s0, 1		#get right tilenum
 	li		$t2, 270
@@ -502,7 +502,7 @@ check_right_tile:#get right tile
 	mul		$t1, $t1, 16		#offset of right tile
 	add		$t1, $t1, $s1		#tile of right tile
 	lw		$t2, 0($t1)
-	bne		$t2, $zero, planting_and_watering_done
+	bne		$t2, $zero, update_next_seed_location
 check_down_tile:	#get down tile
 	add		$t1, $s0, 10		#get down tilenum
 	li		$t2, 99
@@ -510,7 +510,7 @@ check_down_tile:	#get down tile
 	mul		$t1, $t1, 16		#offset of down tile
 	add		$t1, $t1, $s1		#tile of downtile
 	lw		$t2, 0($t1)
-	bne		$t2, $zero, planting_and_watering_done
+	bne		$t2, $zero, update_next_seed_location
 check_left_tile:	#get left tile
 	add		$t1, $s0, -1		#get left tilenum
 	li		$t2, 29
@@ -519,7 +519,7 @@ check_left_tile:	#get left tile
 	mul		$t1, $t1, 16		#offset of left tile
 	add		$t1, $t1, $s1		#tile of lefttile
 	lw		$t2, 0($t1)
-	bne		$t2, $zero, planting_and_watering_done
+	bne		$t2, $zero, update_next_seed_location
 
 done_checking_neighbor_tiles:
 	#WE'RE CLEAR TO PLANT AND WATER at current location!
